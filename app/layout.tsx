@@ -1,15 +1,20 @@
 import type {Metadata} from 'next';
 import './globals.css'; // Global styles
+import { AutoUpdateHandler } from '@/components/common/AutoUpdateHandler';
 
 export const metadata: Metadata = {
-  title: 'My Google AI Studio App',
-  description: 'My Google AI Studio App',
+  title: 'Darmawisata',
+  description: 'Darmawisata',
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <AutoUpdateHandler />
+        {children}
+      </body>
     </html>
   );
 }
+

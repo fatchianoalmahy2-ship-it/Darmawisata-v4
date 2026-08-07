@@ -42,7 +42,6 @@ export const AngketForm: React.FC<AngketFormProps> = ({
   const [seg1, setSeg1] = useState('');
   const [seg2, setSeg2] = useState('');
   const [seg3, setSeg3] = useState('');
-  const [inputMode, setInputMode] = useState<'segmented' | 'manual'>('segmented');
 
   const seg1Ref = React.useRef<HTMLInputElement>(null);
   const seg2Ref = React.useRef<HTMLInputElement>(null);
@@ -461,164 +460,96 @@ export const AngketForm: React.FC<AngketFormProps> = ({
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
               Langkah 1: Masukkan NIS / NISN Siswa
             </label>
-            <div className="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => setInputMode('segmented')}
-                className={`px-3 py-1 rounded-lg transition-all font-bold ${
-                  inputMode === 'segmented'
-                    ? 'bg-white text-emerald-800 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                3 Segmen (25082 / 3258 . 009)
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode('manual')}
-                className={`px-3 py-1 rounded-lg transition-all font-bold ${
-                  inputMode === 'manual'
-                    ? 'bg-white text-slate-800 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Ketik Bebas
-              </button>
-            </div>
           </div>
 
-          {inputMode === 'segmented' ? (
-            <div className="flex flex-col md:flex-row gap-3">
-              {/* Segmented Input Wrapper */}
-              <div className="flex-1 bg-slate-50 border border-slate-300 rounded-xl p-2.5 flex items-center justify-center gap-1.5 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all shadow-xs">
-                {/* Segment 1 */}
-                <div className="relative flex-1 max-w-[130px]">
-                  <input
-                    ref={seg1Ref}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={5}
-                    placeholder="25082"
-                    value={seg1}
-                    onChange={(e) => handleSeg1Change(e.target.value)}
-                    onPaste={handlePasteSegment}
-                    autoComplete="off"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="w-full text-center py-2 px-1.5 bg-white border border-emerald-300 rounded-lg font-mono font-bold text-emerald-950 text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-600 shadow-2xs"
-                  />
-                  <span className="block text-[10px] text-center text-emerald-800 font-bold mt-0.5">
-                    Bagian 1 (5 Digit)
-                  </span>
-                </div>
-
-                {/* Symbol / */}
-                <span className="text-slate-400 font-black text-xl sm:text-2xl px-1 select-none font-mono pb-4">/</span>
-
-                {/* Segment 2 (Disabled / Auto-filled) */}
-                <div className="relative flex-1 max-w-[110px]">
-                  <input
-                    ref={seg2Ref}
-                    type="text"
-                    disabled
-                    readOnly
-                    placeholder="----"
-                    value={seg2}
-                    className="w-full text-center py-2 px-1.5 bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-slate-500 text-xs sm:text-sm cursor-not-allowed select-none shadow-none"
-                  />
-                  <span className="block text-[10px] text-center text-slate-400 font-semibold mt-0.5 flex items-center justify-center gap-0.5">
-                    <Lock className="w-2.5 h-2.5 text-slate-400" />
-                    Bagian 2
-                  </span>
-                </div>
-
-                {/* Symbol . */}
-                <span className="text-slate-400 font-black text-2xl sm:text-3xl px-1 select-none font-mono pb-4">.</span>
-
-                {/* Segment 3 (Disabled / Auto-filled) */}
-                <div className="relative flex-1 max-w-[100px]">
-                  <input
-                    ref={seg3Ref}
-                    type="text"
-                    disabled
-                    readOnly
-                    placeholder="---"
-                    value={seg3}
-                    className="w-full text-center py-2 px-1.5 bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-slate-500 text-xs sm:text-sm cursor-not-allowed select-none shadow-none"
-                  />
-                  <span className="block text-[10px] text-center text-slate-400 font-semibold mt-0.5 flex items-center justify-center gap-0.5">
-                    <Lock className="w-2.5 h-2.5 text-slate-400" />
-                    Bagian 3
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => triggerNisSearch(seg1)}
-                  disabled={isSearching || !seg1}
-                  className="ml-auto px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors shrink-0 shadow-xs flex items-center gap-1.5"
-                >
-                  {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                  {isSearching ? 'Mencari...' : 'Cek NIS'}
-                </button>
-              </div>
-
-              {settings?.showAngketSearchButton === true && (
-                <button
-                  type="button"
-                  onClick={() => setIsLookupOpen(true)}
-                  className="px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-xs shrink-0"
-                >
-                  <Search className="w-4 h-4" />
-                  {students.length > 0 ? `Cari dari Daftar (${students.length} Siswa)` : 'Cari dari Daftar Siswa'}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Segmented Input Wrapper */}
+            <div className="flex-1 bg-slate-50 border border-slate-300 rounded-xl p-3 flex items-center justify-center gap-1.5 sm:gap-2 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition-all shadow-xs">
+              {/* Segment 1 */}
+              <div className="relative flex-1 min-w-[70px] max-w-[130px]">
                 <input
+                  ref={seg1Ref}
                   type="text"
-                  placeholder="Ketik 5 digit NIS..."
-                  value={inputNis}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (/[^0-9/.s-]/.test(val)) {
-                      setErrorMessage('⚠️ Mohon hanya memasukkan ANGKA untuk pencarian NIS.');
-                      setTimeout(() => setErrorMessage(''), 3500);
-                    }
-                    const clean = val.replace(/[^0-9/.s-]/g, '');
-                    setInputNis(clean);
-                    if (clean.trim().length >= 5) {
-                      triggerNisSearch('', '', '', clean, false);
-                    }
-                  }}
-                  className="w-full pl-4 pr-20 py-3 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-base focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="25082"
+                  value={seg1}
+                  onChange={(e) => handleSeg1Change(e.target.value)}
+                  onPaste={handlePasteSegment}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="w-full text-center py-2.5 px-2 bg-white border border-emerald-300 rounded-lg font-mono font-bold text-emerald-950 text-base sm:text-lg focus:outline-hidden focus:ring-2 focus:ring-emerald-600 shadow-2xs"
                 />
-                <button
-                  type="button"
-                  onClick={() => triggerNisSearch('', '', '', inputNis)}
-                  disabled={isSearching || !inputNis}
-                  className="absolute right-2 top-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                >
-                  {isSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                  {isSearching ? 'Cek...' : 'Cek'}
-                </button>
+                <span className="block text-[10px] text-center text-emerald-800 font-bold mt-0.5 whitespace-nowrap">
+                  Bagian 1 (5 Digit)
+                </span>
               </div>
 
-              {settings?.showAngketSearchButton === true && (
-                <button
-                  type="button"
-                  onClick={() => setIsLookupOpen(true)}
-                  className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-xs"
-                >
-                  <Search className="w-4 h-4" />
-                  {students.length > 0 ? `Cari dari Daftar (${students.length} Siswa)` : 'Cari dari Daftar Siswa'}
-                </button>
-              )}
+              {/* Symbol / */}
+              <span className="text-slate-400 font-black text-xl sm:text-2xl px-0.5 select-none font-mono pb-4">/</span>
+
+              {/* Segment 2 (Disabled / Auto-filled) */}
+              <div className="relative flex-1 min-w-[60px] max-w-[110px]">
+                <input
+                  ref={seg2Ref}
+                  type="text"
+                  disabled
+                  readOnly
+                  placeholder="----"
+                  value={seg2}
+                  className="w-full text-center py-2.5 px-1.5 bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-slate-500 text-xs sm:text-sm cursor-not-allowed select-none shadow-none"
+                />
+                <span className="block text-[10px] text-center text-slate-400 font-semibold mt-0.5 flex items-center justify-center gap-0.5 whitespace-nowrap">
+                  <Lock className="w-2.5 h-2.5 text-slate-400" />
+                  Bagian 2
+                </span>
+              </div>
+
+              {/* Symbol . */}
+              <span className="text-slate-400 font-black text-2xl sm:text-3xl px-0.5 select-none font-mono pb-4">.</span>
+
+              {/* Segment 3 (Disabled / Auto-filled) */}
+              <div className="relative flex-1 min-w-[50px] max-w-[100px]">
+                <input
+                  ref={seg3Ref}
+                  type="text"
+                  disabled
+                  readOnly
+                  placeholder="---"
+                  value={seg3}
+                  className="w-full text-center py-2.5 px-1.5 bg-slate-100 border border-slate-200 rounded-lg font-mono font-bold text-slate-500 text-xs sm:text-sm cursor-not-allowed select-none shadow-none"
+                />
+                <span className="block text-[10px] text-center text-slate-400 font-semibold mt-0.5 flex items-center justify-center gap-0.5 whitespace-nowrap">
+                  <Lock className="w-2.5 h-2.5 text-slate-400" />
+                  Bagian 3
+                </span>
+              </div>
             </div>
-          )}
+
+            {/* Cek NIS Button - Pindah ke bawah input NIS pada smartphone */}
+            <button
+              type="button"
+              onClick={() => triggerNisSearch(seg1)}
+              disabled={isSearching || !seg1}
+              className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors shrink-0 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {isSearching ? 'Mencari...' : 'Cek NIS'}
+            </button>
+
+            {settings?.showAngketSearchButton === true && (
+              <button
+                type="button"
+                onClick={() => setIsLookupOpen(true)}
+                className="w-full sm:w-auto px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-xs shrink-0 cursor-pointer"
+              >
+                <Search className="w-4 h-4" />
+                {students.length > 0 ? `Cari dari Daftar (${students.length} Siswa)` : 'Cari dari Daftar Siswa'}
+              </button>
+            )}
+          </div>
 
           <p className="text-xs text-slate-600 font-medium flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-200/60 p-2.5 rounded-xl">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-ping"></span>
