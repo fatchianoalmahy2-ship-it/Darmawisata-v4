@@ -43,7 +43,7 @@ export class AuthService {
     }
     return {
       username: 'admin',
-      password: 'admin123',
+      password: '4dm1n',
       name: 'Panitia Utama Darmawisata',
     };
   }
@@ -114,7 +114,7 @@ export class AuthService {
   static async loginAdmin(username: string, pass: string): Promise<{ success: boolean; user?: AuthUser; message?: string }> {
     const creds = await this.getAdminCredentials();
     const isUsernameMatch = username.trim().toLowerCase() === creds.username.trim().toLowerCase();
-    const isPassMatch = pass === creds.password || (creds.password === 'admin123' && pass === 'admin');
+    const isPassMatch = pass === creds.password || ((creds.password === '4dm1n' || creds.password === 'admin123') && (pass === '4dm1n' || pass === 'admin'));
 
     if (isUsernameMatch && isPassMatch) {
       const user: AuthUser = {

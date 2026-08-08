@@ -67,7 +67,8 @@ export function useAppData() {
 
   const autoAllocateAllWhenClosed = useCallback((
     currentStudents: Student[],
-    currentSettings: AppSettings
+    currentSettings: AppSettings,
+    classList?: SchoolClass[]
   ) => {
     const registeredBali = currentStudents.filter(
       (s) => s.isRegistered && s.destination === 'BALI'
@@ -91,7 +92,9 @@ export function useAppData() {
 
     const seatRes = SeatAllocatorEngine.autoAllocateBuses(
       updated,
-      currentSettings.defaultBusCapacity || 50
+      currentSettings.defaultBusCapacity || 50,
+      classList,
+      currentSettings.customBusGuides
     );
     updated = seatRes.updatedStudents;
 
@@ -138,7 +141,9 @@ export function useAppData() {
 
         const finalBuses = SeatAllocatorEngine.deriveBusesFromStudents(
           parsedStudents,
-          parsedSettings.defaultBusCapacity
+          parsedSettings.defaultBusCapacity,
+          parsedClasses,
+          parsedSettings.customBusGuides
         );
         const finalRooms = RoomAllocatorEngine.deriveRoomsFromStudents(
           parsedStudents,
@@ -175,7 +180,9 @@ export function useAppData() {
           const currentStgs = cachedSettings || (schoolMetadata.defaultSettings as AppSettings);
           const finalBuses = SeatAllocatorEngine.deriveBusesFromStudents(
             cachedStudents,
-            currentStgs.defaultBusCapacity
+            currentStgs.defaultBusCapacity,
+            cachedClasses,
+            currentStgs.customBusGuides
           );
           const finalRooms = RoomAllocatorEngine.deriveRoomsFromStudents(
             cachedStudents,
@@ -192,7 +199,9 @@ export function useAppData() {
           // Smart TTL check (Solusi 1 & 4): If synced within last 15 minutes, skip expensive collection reads to save quota
           const lastSync = localStorage.getItem(LS_CACHE_KEYS.LAST_SYNC);
           const now = Date.now();
-          if (lastSync && now - Number(lastSync) < 15 * 60 * 1000) {
+          const isCacheFresh = lastSync && (now - Number(lastSync) < 15 * 60 * 1000);
+          
+          if (isCacheFresh && cachedStudents.length > 0) {
             console.log('Data served from fresh IndexedDB/LocalStorage cache (< 15 mins). Skipping remote fetch to preserve quota.');
             setIsSyncing(false);
             return;
@@ -238,14 +247,16 @@ export function useAppData() {
         let finalRooms: Room[] = [];
 
         if (isClosed && needsAllocation) {
-          const allocRes = autoAllocateAllWhenClosed(initialStds, initialStgs);
+          const allocRes = autoAllocateAllWhenClosed(initialStds, initialStgs, initialClss);
           finalStds = allocRes.updatedStudents;
           finalBuses = allocRes.buses;
           finalRooms = allocRes.rooms;
         } else {
           finalBuses = SeatAllocatorEngine.deriveBusesFromStudents(
             initialStds,
-            initialStgs.defaultBusCapacity
+            initialStgs.defaultBusCapacity,
+            initialClss,
+            initialStgs.customBusGuides
           );
           finalRooms = RoomAllocatorEngine.deriveRoomsFromStudents(
             initialStds,
@@ -341,6 +352,11 @@ export function useAppData() {
 
   const forceRemoteSync = useCallback(async () => {
     localStorage.removeItem(LS_CACHE_KEYS.LAST_SYNC);
+    localStorage.removeItem(LS_CACHE_KEYS.STUDENTS);
+    localStorage.removeItem(LS_CACHE_KEYS.CLASSES);
+    localStorage.removeItem(LS_CACHE_KEYS.SETTINGS);
+    localStorage.removeItem(LS_CACHE_KEYS.RUNDOWNS);
+    await dbService.clearAllCaches();
     setIsSyncing(true);
     try {
       const [initialStds, initialClss, initialStgs, initialRdns] = await Promise.all([
@@ -353,7 +369,32 @@ export function useAppData() {
       setClasses(initialClss);
       setSettings(initialStgs);
       setRundowns(initialRdns);
+      
+      const derivedBuses = SeatAllocatorEngine.deriveBusesFromStudents(
+        initialStds,
+        initialStgs.defaultBusCapacity,
+        initialClss,
+        initialStgs.customBusGuides
+      );
+      const derivedRooms = RoomAllocatorEngine.deriveRoomsFromStudents(
+        initialStds,
+        initialStgs.defaultRoomCapacity
+      );
+      setBuses(derivedBuses);
+      setRooms(derivedRooms);
+
+      localStorage.setItem(LS_CACHE_KEYS.STUDENTS, JSON.stringify(initialStds));
+      localStorage.setItem(LS_CACHE_KEYS.CLASSES, JSON.stringify(initialClss));
+      localStorage.setItem(LS_CACHE_KEYS.SETTINGS, JSON.stringify(initialStgs));
+      localStorage.setItem(LS_CACHE_KEYS.RUNDOWNS, JSON.stringify(initialRdns));
       localStorage.setItem(LS_CACHE_KEYS.LAST_SYNC, String(Date.now()));
+
+      await Promise.all([
+        dbService.putStudents(initialStds),
+        dbService.putClasses(initialClss),
+        dbService.putSettings(initialStgs),
+        dbService.putRundowns(initialRdns),
+      ]);
       await dbService.triggerSync();
     } catch (e) {
       console.error('Force remote sync failed:', e);

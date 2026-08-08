@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabaseClient';
-import { Student, SchoolClass, AppSettings, RundownItem, AdminCredentials } from '@/types';
+import { Student, SchoolClass, AppSettings, RundownItem, AdminCredentials, ActivityLog } from '@/types';
 import schoolMetadata from '@/config/schoolMetadata.json';
 import { sortClassesAlphabetically, normalizeClassName } from '@/lib/utils';
 
@@ -160,7 +160,7 @@ export async function getInitialStudents(): Promise<Student[]> {
   try {
     const { data, error } = await supabase
       .from('students')
-      .select('*');
+      .select('id, nis, name, className, gender, isRegistered, destination, wave, busNumber, seatNumber, roomNumber, tShirtSize, tShirtDesign, parentName, parentAddress, parentPhone, studentPhone, medicalHistory');
 
     if (data && !error) {
       const students = data as Student[];
@@ -380,4 +380,81 @@ export async function resetRundownsToDefault(): Promise<RundownItem[]> {
   const cleaned = defaultItems.map((item) => cleanData(item));
   await safeUpsert('rundowns', cleaned, 'id');
   return defaultItems;
+}
+
+// ----------------------------------------------------------------------------
+// 5. ACTIVITY LOGS TABLE
+// ----------------------------------------------------------------------------
+export async function getInitialActivityLogs(limit = 100): Promise<ActivityLog[]> {
+  try {
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .select('id, timestamp, userName, userRole, action, details, ipAddress')
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (data && !error) {
+      return data as ActivityLog[];
+    }
+
+    if (error && (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.code === '42P01')) {
+      console.warn('[Supabase] activity_logs table missing, using backup store...');
+      const { data: backupData } = await supabase
+        .from('settings')
+        .select('data')
+        .eq('id', 'activity_logs_backup')
+        .maybeSingle();
+      if (backupData && backupData.data) {
+        return (backupData.data as ActivityLog[]).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      }
+    }
+    return [];
+  } catch (err) {
+    console.warn('Error loading activity logs from Supabase:', err);
+    return [];
+  }
+}
+
+export async function logActivity(log: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<void> {
+  const newLog: ActivityLog = {
+    ...log,
+    id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const { error } = await supabase.from('activity_logs').insert([cleanData(newLog)]);
+    if (!error) return;
+
+    if (error.message?.includes('does not exist') || error.code === '42P01') {
+      const { data: currentBackup } = await supabase
+        .from('settings')
+        .select('data')
+        .eq('id', 'activity_logs_backup')
+        .maybeSingle();
+
+      const existingLogs: ActivityLog[] = currentBackup?.data ? (currentBackup.data as ActivityLog[]) : [];
+      const updatedLogs = [newLog, ...existingLogs].slice(0, 200);
+
+      await safeUpsert('settings', [{ id: 'activity_logs_backup', data: cleanData(updatedLogs) }], 'id');
+    } else {
+      console.error('Error saving activity log to Supabase:', error);
+    }
+  } catch (err) {
+    console.warn('Fallback saving activity log due to exception:', err);
+    try {
+      const { data: currentBackup } = await supabase
+        .from('settings')
+        .select('data')
+        .eq('id', 'activity_logs_backup')
+        .maybeSingle();
+
+      const existingLogs: ActivityLog[] = currentBackup?.data ? (currentBackup.data as ActivityLog[]) : [];
+      const updatedLogs = [newLog, ...existingLogs].slice(0, 200);
+
+      await safeUpsert('settings', [{ id: 'activity_logs_backup', data: cleanData(updatedLogs) }], 'id');
+    } catch (fallbackErr) {
+      console.error('All activity logging strategies failed:', fallbackErr);
+    }
+  }
 }

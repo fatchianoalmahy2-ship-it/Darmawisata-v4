@@ -25,6 +25,7 @@ import {
   getInitialSettings,
   getInitialRundowns,
   resetRundownsToDefault,
+  logActivity,
 } from '@/services/supabaseService';
 import { RoomAllocatorEngine } from '@/services/roomAllocator';
 import { SeatAllocatorEngine } from '@/services/seatAllocator';
@@ -64,6 +65,7 @@ function HomePageContent() {
     isAngketClosed,
     checkIsAngketClosed,
     autoAllocateAllWhenClosed,
+    forceRemoteSync,
   } = useAppData();
 
   const [activeTab, setActiveTab] = useState<AppTab>('ANGKET');
@@ -124,6 +126,21 @@ function HomePageContent() {
     setStudents(updated);
     await dbService.putSingleStudent(newStudent);
     await dbService.enqueueTask('save_student', newStudent);
+    
+    // Log Activity
+    try {
+      await logActivity({
+        action: 'ADD',
+        nis: newStudent.nis,
+        name: newStudent.name,
+        className: newStudent.className,
+        operator: currentUser.name || currentUser.role || 'Admin',
+        details: `Menambahkan siswa baru: ${newStudent.name} (NIS: ${newStudent.nis}) ke kelas ${newStudent.className}.`,
+      });
+    } catch (e) {
+      console.error('Error logging student add:', e);
+    }
+
     showToast(`Siswa baru ${newStudent.name} berhasil ditambahkan!`, 'success');
   };
 
@@ -137,12 +154,27 @@ function HomePageContent() {
     await dbService.deleteStudent(studentId);
     await dbService.enqueueTask('delete_student', studentId);
     if (target) {
+      // Log Activity
+      try {
+        await logActivity({
+          action: 'DELETE',
+          nis: target.nis,
+          name: target.name,
+          className: target.className,
+          operator: currentUser.name || currentUser.role || 'Admin',
+          details: `Menghapus siswa: ${target.name} (NIS: ${target.nis}) dari kelas ${target.className}.`,
+        });
+      } catch (e) {
+        console.error('Error logging student delete:', e);
+      }
+
       showToast(`Data siswa ${target.name} berhasil dihapus.`, 'info');
     }
   };
 
   const handleDeleteMultipleStudents = async (studentIds: string[]) => {
     if (!studentIds || studentIds.length === 0) return;
+    const targets = students.filter((s) => studentIds.includes(s.id));
     setStudents((prev) => {
       const updated = prev.filter((s) => !studentIds.includes(s.id));
       try { localStorage.setItem(LS_CACHE_KEYS.STUDENTS, JSON.stringify(updated)); } catch (e) {}
@@ -153,6 +185,18 @@ function HomePageContent() {
     await dbService.deleteMultipleStudents(studentIds);
     await dbService.enqueueTask('delete_students', studentIds);
     
+    // Log Activity
+    try {
+      const namesStr = targets.map((t) => `${t.name} (${t.className})`).join(', ');
+      await logActivity({
+        action: 'DELETE',
+        operator: currentUser.name || currentUser.role || 'Admin',
+        details: `Menghapus ${studentIds.length} siswa secara massal: ${namesStr.substring(0, 300)}${namesStr.length > 300 ? '...' : ''}.`,
+      });
+    } catch (e) {
+      console.error('Error logging bulk student delete:', e);
+    }
+
     showToast(`Berhasil menghapus ${studentIds.length} data siswa terpilih.`, 'info');
   };
 
@@ -204,6 +248,17 @@ function HomePageContent() {
       });
     }
 
+    // Log Activity
+    try {
+      await logActivity({
+        action: 'BULK_IMPORT',
+        operator: currentUser.name || currentUser.role || 'Admin',
+        details: `Mengimpor ${importedStudents.length} data siswa melalui file excel/csv secara massal.`,
+      });
+    } catch (e) {
+      console.error('Error logging student bulk import:', e);
+    }
+
     showToast(`Berhasil mengimpor ${importedStudents.length} data siswa.`, 'success');
   };
 
@@ -216,6 +271,18 @@ function HomePageContent() {
     await dbService.clearClasses();
     await dbService.enqueueTask('clear_students', null);
     await dbService.enqueueTask('clear_classes', null);
+
+    // Log Activity
+    try {
+      await logActivity({
+        action: 'CLEAR',
+        operator: currentUser.name || currentUser.role || 'Admin',
+        details: `Mengosongkan seluruh data siswa dan kelas di sistem (Clear All).`,
+      });
+    } catch (e) {
+      console.error('Error logging clear all:', e);
+    }
+
     showToast('Seluruh data siswa dan kelas telah dikosongkan.', 'warning');
   };
 
@@ -242,12 +309,36 @@ function HomePageContent() {
         const updatedClassStudents = updated.filter((s) => s.className === className);
         await dbService.putStudents(updatedClassStudents);
         await dbService.enqueueTask('save_students', updatedClassStudents);
+
+        // Log Activity
+        try {
+          await logActivity({
+            action: 'UPDATE',
+            className: className,
+            operator: currentUser.name || currentUser.role || 'Admin',
+            details: `Mereset status registrasi angket seluruh siswa di kelas ${className} menjadi belum mengisi.`,
+          });
+        } catch (e) {
+          console.error('Error logging class reset:', e);
+        }
       } else {
         const classStudentsToDelete = students.filter((s) => s.className === className);
         const remainingStudents = students.filter((s) => s.className !== className);
         setStudents(remainingStudents);
         await Promise.all(classStudentsToDelete.map((s) => dbService.deleteStudent(s.id)));
         await Promise.all(classStudentsToDelete.map((s) => dbService.enqueueTask('delete_student', s.id)));
+
+        // Log Activity
+        try {
+          await logActivity({
+            action: 'DELETE',
+            className: className,
+            operator: currentUser.name || currentUser.role || 'Admin',
+            details: `Menghapus seluruh siswa (${classStudentsToDelete.length} orang) dan kelas ${className} dari sistem.`,
+          });
+        } catch (e) {
+          console.error('Error logging class clear delete:', e);
+        }
 
         const targetClass = classes.find((c) => c.name === className);
         if (targetClass) {
@@ -323,7 +414,8 @@ function HomePageContent() {
   const handleAutoAllocateBuses = async () => {
     const result = SeatAllocatorEngine.autoAllocateBuses(
       students,
-      settings.defaultBusCapacity
+      settings.defaultBusCapacity,
+      classes
     );
     setStudents(result.updatedStudents);
     setBuses(result.buses);
@@ -340,7 +432,7 @@ function HomePageContent() {
 
     const isClosed = checkIsAngketClosed(newSettings);
     if (isClosed) {
-      const allocRes = autoAllocateAllWhenClosed(students, newSettings);
+      const allocRes = autoAllocateAllWhenClosed(students, newSettings, classes);
       setStudents(allocRes.updatedStudents);
       setBuses(allocRes.buses);
       setRooms(allocRes.rooms);
@@ -436,10 +528,14 @@ function HomePageContent() {
             thresholdPercentage={settings.waliKelasParticipationThreshold}
             currentUser={currentUser}
             settings={settings}
+            onUpdateSettings={handleSaveSettings}
             onClearClassData={handleClearClassData}
             onUpdateClass={handleUpdateClass}
             onAddClass={handleAddClass}
             onDeleteClass={handleDeleteClass}
+            onAddStudent={handleAddStudent}
+            onUpdateStudent={handleSaveStudent}
+            onDeleteStudent={handleDeleteStudent}
           />
         )
       )}
@@ -464,11 +560,11 @@ function HomePageContent() {
       )}
 
       {activeTab === 'DENAH_BUS' && (
-        isPublicUser ? (
+        !isAdminUser ? (
           <AccessDeniedCard
             title="Akses Denah Bus Terkunci"
-            description="Denah duduk bus memerlukan verifikasi login Wali Kelas atau Admin Panitia."
-            onLogin={() => handleOpenLoginModal('Denah Bus')}
+            description="Denah duduk bus memerlukan verifikasi login Admin Panitia."
+            onLogin={() => handleOpenLoginModal('Denah Bus', 'ADMIN')}
           />
         ) : (
           <div className="space-y-4">
@@ -565,6 +661,7 @@ function HomePageContent() {
             onAddClass={handleAddClass}
             onUpdateClass={handleUpdateClass}
             onDeleteClass={handleDeleteClass}
+            onSaveSettings={handleSaveSettings}
           />
         )
       )}
@@ -575,6 +672,10 @@ function HomePageContent() {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+        onForceRemoteSync={async () => {
+          await forceRemoteSync();
+          showToast('Cache lokal berhasil dibersihkan dan data disinkronkan dari Supabase!', 'success');
+        }}
         onResetData={() => {
           if (confirm('Aksi ini akan mereset pengaturan ke default. Lanjutkan?')) {
             handleSaveSettings(schoolMetadata.defaultSettings as AppSettings);

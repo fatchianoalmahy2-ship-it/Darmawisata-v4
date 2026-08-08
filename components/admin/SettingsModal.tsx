@@ -32,6 +32,7 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AppSettings;
   onSaveSettings: (newSettings: AppSettings) => void;
+  onForceRemoteSync?: () => Promise<void>;
   onResetData: () => void;
 }
 
@@ -40,6 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onSaveSettings,
+  onForceRemoteSync,
   onResetData,
 }) => {
   const [prevSettings, setPrevSettings] = useState(settings);
@@ -316,7 +318,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Syarat Wali Kelas (%)
+                  Syarat Minimal Angket Wali (%)
                 </label>
                 <input
                   type="number"
@@ -333,6 +335,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-emerald-500"
                 />
                 <span className="text-[10px] text-slate-500">Standar: 75% Siswa Terdaftar</span>
+              </div>
+            </div>
+
+            {/* Dynamic Quota & Wali Kelas Participation Section */}
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 text-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
+                <h5 className="font-extrabold text-emerald-900 text-xs flex items-center gap-1.5">
+                  👔 Param Pembagian Wali Kelas (Bali vs Jogja) & Portal Display
+                </h5>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-600 text-white rounded-md">
+                  Rumus Otomatis Dinamis
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Jumlah Gelombang Tour Bali
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    required
+                    value={formData.totalGelombangBali || 2}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        totalGelombangBali: parseInt(e.target.value) || 2,
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-600 block mt-1">
+                    Dipakai untuk membagi rata kuota Wali Kelas ke Gelombang 1 & 2.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Status Keikutsertaan Wali di Portal Wali
+                  </label>
+                  <select
+                    value={formData.showWaliParticipationStatusInPortal ? 'true' : 'false'}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        showWaliParticipationStatusInPortal: e.target.value === 'true',
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 text-sm focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="false">🔒 Sembunyikan (Default - Hanya Admin)</option>
+                    <option value="true">👁️ Tampilkan di Portal Wali Kelas</option>
+                  </select>
+                  <span className="text-[10px] text-slate-600 block mt-1">
+                    Jika diset Tampilkan, Wali Kelas dapat melihat ranking & status lolos keikutsertaannya di portal mereka.
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-white/80 rounded-lg border border-emerald-200/60 text-[11px] text-emerald-950 leading-relaxed font-medium">
+                <strong>💡 Rumus Otomatis Pembagian Wali Kelas:</strong><br />
+                1. <code>Total Bus Bali = Math.ceil(Total Siswa Bali / Kapasitas Bus)</code><br />
+                2. <code>Batas Wali Ke Bali = Total Bus Bali</code> (1 Bus = 1 Slot Wali Kelas)<br />
+                3. <code>Kuota per Gelombang = Total Bus / Jumlah Gelombang Bali</code><br />
+                4. Urutan Rangking Kelas ditentukan secara dinamis dari terbanyak siswa yang ikut ke Bali.
               </div>
             </div>
 
@@ -613,16 +682,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Nama Grup Target */}
               <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700">
                 <label className="block text-[11px] font-extrabold text-slate-300 mb-1">
-                  Nama / No. Target WA Panitia
+                  Nama Target WA (Grup / Deskripsi)
                 </label>
                 <input
                   type="text"
                   value={formData.autoRecapTargetGroup || 'Grup Panitia Darmawisata'}
                   onChange={(e) => setFormData({ ...formData, autoRecapTargetGroup: e.target.value })}
-                  placeholder="Nama Grup Panitia / 08123xxx"
+                  placeholder="Contoh: Grup Panitia Darmawisata"
                   className="w-full px-2.5 py-1.5 bg-slate-950 text-white font-bold text-xs rounded-lg border border-slate-700"
                 />
               </div>
+            </div>
+
+            {/* BARU: Konfigurasi Hubungan Gateway WhatsApp */}
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3.5">
+              <p className="text-[11px] font-black text-emerald-400 uppercase tracking-wider">
+                ⚙️ Metode & Integrasi WhatsApp Gateway (Self-Hosted)
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Mode Pilihan */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                    Metode Pengiriman
+                  </label>
+                  <select
+                    value={formData.whatsappMode || 'SIMULATION'}
+                    onChange={(e) => setFormData({ ...formData, whatsappMode: e.target.value as any })}
+                    className="w-full px-2.5 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg border border-slate-700 focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="SIMULATION">🛠️ Simulasi Sistem & Log DB</option>
+                    <option value="WEB_JS">📱 Self-Hosted whatsapp-web.js (QR Code)</option>
+                    <option value="HTTP_GATEWAY">🌐 Custom Gateway API (HTTP POST)</option>
+                  </select>
+                </div>
+
+                {/* Target Nomor Telepon */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                    Nomor JID / Phone Target (e.g. 628123...)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.autoRecapTargetPhone || ''}
+                    onChange={(e) => setFormData({ ...formData, autoRecapTargetPhone: e.target.value })}
+                    placeholder="Contoh: 628123456789 atau ID Grup"
+                    className="w-full px-2.5 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg border border-slate-700 focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Info status / mode active */}
+                <div className="flex items-center text-[10px] text-slate-400 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/80">
+                  <span>
+                    {formData.whatsappMode === 'WEB_JS' && 'Membutuhkan inisialisasi QR Code di modal dispatch.'}
+                    {formData.whatsappMode === 'HTTP_GATEWAY' && 'Mengirimkan JSON body {target, message} ke API URL.'}
+                    {(formData.whatsappMode === 'SIMULATION' || !formData.whatsappMode) && 'Menyimpan log pengiriman sukses harian ke database tanpa mengirim chat nyata.'}
+                  </span>
+                </div>
+              </div>
+
+              {formData.whatsappMode === 'HTTP_GATEWAY' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-800/60">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                      Custom Gateway POST API URL
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.whatsappGatewayUrl || ''}
+                      onChange={(e) => setFormData({ ...formData, whatsappGatewayUrl: e.target.value })}
+                      placeholder="https://api.yourdomain.com/v1/send-message"
+                      className="w-full px-2.5 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg border border-slate-700 focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                      Gateway Authorization Bearer Token (Opsional)
+                    </label>
+                    <input
+                      type="password"
+                      value={formData.whatsappGatewayToken || ''}
+                      onChange={(e) => setFormData({ ...formData, whatsappGatewayToken: e.target.value })}
+                      placeholder="Bearer token jika diperlukan..."
+                      className="w-full px-2.5 py-1.5 bg-slate-900 text-white font-bold text-xs rounded-lg border border-slate-700 focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* TEMPLATE EDITOR SECTION */}
@@ -1279,15 +1425,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              if (confirm('Yakin ingin mengosongkan cache dan menyegarkan ulang dari Supabase?')) {
-                onResetData();
+            onClick={async () => {
+              if (confirm('Yakin ingin mengosongkan cache lokal dan menyegarkan data langsung dari Supabase?')) {
+                if (onForceRemoteSync) {
+                  await onForceRemoteSync();
+                } else {
+                  onResetData();
+                }
                 onClose();
               }
             }}
-            className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors whitespace-nowrap flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset Data
+            <RotateCcw className="w-3.5 h-3.5" /> Bersihkan Cache & Sync Data
           </button>
         </div>
       </div>

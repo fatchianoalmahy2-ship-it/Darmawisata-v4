@@ -10,6 +10,7 @@ import { StudentManager } from './StudentManager';
 import { WaliKelasManager } from './WaliKelasManager';
 import { QueryQueueMonitor } from './QueryQueueMonitor';
 import { AdminOverviewStats } from './AdminOverviewStats';
+import { ActivityLogManager } from './ActivityLogManager';
 import {
   Compass,
   BedDouble,
@@ -19,6 +20,7 @@ import {
   UserCheck,
   Database,
   BarChart3,
+  History,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -43,6 +45,7 @@ interface AdminDashboardProps {
   onAddClass: (newClass: SchoolClass) => void;
   onUpdateClass: (updatedClass: SchoolClass) => void;
   onDeleteClass: (classId: string) => void;
+  onSaveSettings?: (settings: AppSettings) => Promise<void> | void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -67,13 +70,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onAddClass,
   onUpdateClass,
   onDeleteClass,
+  onSaveSettings,
 }) => {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'STUDENTS' | 'CLASSES' | 'WALI_KELAS' | 'BUSES' | 'ROOMS' | 'RUNDOWNS' | 'QUERIES'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'STUDENTS' | 'CLASSES' | 'WALI_KELAS' | 'BUSES' | 'ROOMS' | 'RUNDOWNS' | 'QUERIES' | 'ACTIVITY_LOGS'>('OVERVIEW');
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto" id="admin-dashboard-container">
       {/* Tab Selector (Standardized Grid Layout) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-8 gap-2.5 sm:gap-3 p-3 bg-white rounded-2xl border border-slate-200 shadow-xs no-print" id="admin-tab-selector">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-9 gap-2.5 sm:gap-3 p-3 bg-white rounded-2xl border border-slate-200 shadow-xs no-print" id="admin-tab-selector">
         <button
           type="button"
           onClick={() => setActiveTab('OVERVIEW')}
@@ -169,6 +173,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <Database className="w-4 h-4 shrink-0" /> Monitor Antrian Query
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('ACTIVITY_LOGS')}
+          className={`min-h-[44px] sm:min-h-[48px] py-2 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center leading-tight ${
+            activeTab === 'ACTIVITY_LOGS'
+              ? 'bg-purple-600 text-white shadow-xs font-black'
+              : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200'
+          }`}
+        >
+          <History className="w-4 h-4 shrink-0" /> Log Aktivitas
+        </button>
       </div>
 
       {/* Tabs Content */}
@@ -221,6 +237,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             buses={buses}
             students={students}
             onUpdateStudent={onUpdateStudent}
+            onBulkImportStudents={onBulkImportStudents}
+            settings={settings}
+            onSaveSettings={onSaveSettings}
           />
         )}
 
@@ -229,6 +248,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             rooms={rooms}
             students={students}
             onUpdateStudent={onUpdateStudent}
+            onBulkImportStudents={onBulkImportStudents}
           />
         )}
 
@@ -243,6 +263,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {activeTab === 'QUERIES' && (
           <QueryQueueMonitor />
+        )}
+
+        {activeTab === 'ACTIVITY_LOGS' && (
+          <ActivityLogManager />
         )}
       </div>
     </div>

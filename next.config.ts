@@ -3,6 +3,7 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
+  serverExternalPackages: ['whatsapp-web.js', 'puppeteer-core', 'puppeteer'],
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -23,6 +24,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ['motion'],
   experimental: {
     webpackBuildWorker: false,
+    optimizePackageImports: [],
   },
   webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.

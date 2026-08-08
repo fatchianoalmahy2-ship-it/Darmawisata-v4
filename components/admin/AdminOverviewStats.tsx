@@ -93,9 +93,16 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
         allSizesAll[s.tShirtSize] = (allSizesAll[s.tShirtSize] || 0) + 1;
       }
     });
-    const totalSizesStr = Object.entries(allSizesAll)
-      .map(([sz, c]) => `${sz}:${c}`)
-      .join(' | ') || '-';
+
+    // Custom order for sizes
+    const sizeOrder = ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'];
+    const sortedAllSizes = Object.entries(allSizesAll).sort((a, b) => {
+      return sizeOrder.indexOf(a[0]) - sizeOrder.indexOf(b[0]);
+    });
+
+    const totalSizesStr = sortedAllSizes
+      .map(([sz, c]) => `<span class="size-pill font-bold" style="background-color: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe;">${sz}: ${c}</span>`)
+      .join(' ') || '-';
 
     const rowsHtml = classes.map((cls) => {
       const clsStudents = students.filter((s) => s.className === cls.name);
@@ -110,15 +117,19 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
         }
       });
 
-      const sizeStr = Object.entries(clsSizes)
-        .map(([sz, c]) => `${sz}:${c}`)
-        .join(' | ') || '-';
+      const sortedClsSizes = Object.entries(clsSizes).sort((a, b) => {
+        return sizeOrder.indexOf(a[0]) - sizeOrder.indexOf(b[0]);
+      });
+
+      const sizeStr = sortedClsSizes
+        .map(([sz, c]) => `<span class="size-pill"><strong>${sz}</strong>: ${c}</span>`)
+        .join(' ') || '-';
 
       const isComplete = clsRegistered.length === clsStudents.length && clsStudents.length > 0;
 
       return `
         <tr>
-          <td style="font-weight: 700;">${cls.name}</td>
+          <td style="font-weight: 800; text-align: center;">${cls.name}</td>
           <td>${cls.homeroomTeacher || '-'}</td>
           <td class="text-center" style="font-weight: 700; text-align: center;">${clsStudents.length}</td>
           <td class="text-center" style="text-align: center;">
@@ -126,12 +137,39 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
               ${clsRegistered.length} / ${clsStudents.length}
             </span>
           </td>
-          <td class="text-center" style="color: #0f766e; background-color: #f0fdf4; font-weight: 700; text-align: center;">${clsBali}</td>
-          <td class="text-center" style="color: #b45309; background-color: #fffbeb; font-weight: 700; text-align: center;">${clsYogya}</td>
-          <td><span class="badge badge-purple">${sizeStr}</span></td>
+          <td class="text-center" style="color: #0f766e; background-color: #f0fdf4; font-weight: 800; text-align: center;">${clsBali}</td>
+          <td class="text-center" style="color: #b45309; background-color: #fffbeb; font-weight: 800; text-align: center;">${clsYogya}</td>
+          <td style="padding: 4px 6px;">${sizeStr}</td>
         </tr>
       `;
     }).join('');
+
+    const numClasses = classes.length;
+    let bodyPadding = '12px 15px';
+    let fontSize = '11.5px';
+    let padding = '5px 8px';
+    let headerMargin = '10px';
+    let titleSize = '16px';
+    let subTitleSize = '10px';
+    let metaMargin = '8px';
+
+    if (numClasses > 15) {
+      bodyPadding = '5px 8px';
+      fontSize = '9px';
+      padding = '2px 4px';
+      headerMargin = '4px';
+      titleSize = '12px';
+      subTitleSize = '8px';
+      metaMargin = '4px';
+    } else if (numClasses > 10) {
+      bodyPadding = '8px 12px';
+      fontSize = '10px';
+      padding = '3px 5px';
+      headerMargin = '6px';
+      titleSize = '14px';
+      subTitleSize = '9px';
+      metaMargin = '6px';
+    }
 
     const printWin = window.open('', '_blank');
     if (!printWin) {
@@ -148,66 +186,69 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
         <style>
           body {
             font-family: Arial, sans-serif;
-            padding: 10px 15px;
+            padding: ${bodyPadding};
             color: #1e293b;
             line-height: 1.25;
             background: #ffffff;
-            font-size: 11px;
+            font-size: ${fontSize};
           }
           .header {
             text-align: center;
-            margin-bottom: 12px;
-            border-bottom: 2px double #cbd5e1;
+            margin-bottom: ${headerMargin};
+            border-bottom: 2px double #94a3b8;
             padding-bottom: 6px;
           }
           .header h1 {
-            font-size: 16px;
-            font-weight: 800;
+            font-size: ${titleSize};
+            font-weight: 850;
             margin: 0;
             color: #0f172a;
             text-transform: uppercase;
             letter-spacing: 0.5px;
           }
           .header h2 {
-            font-size: 10px;
-            font-weight: 600;
+            font-size: ${subTitleSize};
+            font-weight: 700;
             margin: 3px 0 0 0;
             color: #475569;
+            letter-spacing: 0.3px;
           }
           .meta-info {
             display: flex;
             justify-content: space-between;
-            font-size: 9.5px;
-            color: #64748b;
-            margin-bottom: 8px;
-            font-weight: 500;
+            font-size: calc(${fontSize} - 1.5px);
+            color: #475569;
+            margin-bottom: ${metaMargin};
+            font-weight: 600;
           }
           .report-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 11px;
-            margin-top: 5px;
+            font-size: ${fontSize};
+            margin-top: 2px;
           }
           .report-table th, .report-table td {
-            border: 1px solid #94a3b8;
-            padding: 5px 8px;
+            border: 1px solid #64748b;
+            padding: ${padding};
             text-align: left;
+            vertical-align: middle;
           }
           .report-table th {
-            background-color: #f1f5f9;
+            background-color: #e2e8f0;
             color: #0f172a;
-            font-weight: 800;
+            font-weight: 850;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: 11px;
             letter-spacing: 0.3px;
           }
-          .col-rombel { width: 18%; }
-          .col-wali { width: 32%; }
-          .col-siswa { width: 10%; text-align: center !important; }
-          .col-terisi { width: 12%; text-align: center !important; }
-          .col-bali { width: 8%; text-align: center !important; }
-          .col-jogja { width: 8%; text-align: center !important; }
-          .col-kaos { width: 12%; }
+          .col-rombel { width: 9%; text-align: center !important; }
+          .col-wali { width: 25%; }
+          .col-siswa { width: 8%; text-align: center !important; }
+          .col-terisi { width: 10%; text-align: center !important; }
+          .col-bali { width: 7%; text-align: center !important; }
+          .col-jogja { width: 7%; text-align: center !important; }
+          .col-kaos { width: 34%; }
+          
           .report-table tr:nth-child(even) {
             background-color: #f8fafc;
           }
@@ -219,10 +260,11 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
           }
           .badge {
             display: inline-block;
-            padding: 1px 5px;
-            border-radius: 3px;
+            padding: 3px 7px;
+            border-radius: 4px;
             font-weight: 800;
-            font-size: 9.5px;
+            font-size: 11px;
+            white-space: nowrap;
           }
           .badge-blue {
             background-color: #e0f2fe;
@@ -234,20 +276,27 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
             color: #065f46;
             border: 1px solid #a7f3d0;
           }
-          .badge-purple {
+          .size-pill {
+            display: inline-block;
             background-color: #f3e8ff;
             color: #6b21a8;
             border: 1px solid #e9d5ff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11.5px;
+            font-weight: 600;
+            margin: 2px;
+            white-space: nowrap;
           }
           .total-row {
-            background-color: #e2e8f0;
-            font-weight: 800;
+            background-color: #cbd5e1 !important;
+            font-weight: 850;
             color: #0f172a;
           }
           .footer {
-            margin-top: 12px;
+            margin-top: 15px;
             text-align: right;
-            font-size: 9px;
+            font-size: 10px;
             color: #64748b;
           }
           @media print {
@@ -257,7 +306,37 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
             }
             @page {
               size: A4 portrait;
-              margin: 0.6cm 0.8cm;
+              margin: 0.8cm 1cm;
+            }
+            .report-table th {
+              background-color: #cbd5e1 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .report-table tr:nth-child(even) {
+              background-color: #f8fafc !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .badge-blue {
+              background-color: #e0f2fe !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .badge-green {
+              background-color: #d1fae5 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .size-pill {
+              background-color: #f3e8ff !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .total-row {
+              background-color: #94a3b8 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
           }
         </style>
@@ -274,9 +353,9 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
         <table class="report-table">
           <thead>
             <tr>
-              <th class="col-rombel">Rombel / Kelas</th>
+              <th class="col-rombel text-center">Rombel</th>
               <th class="col-wali">Wali Kelas</th>
-              <th class="col-siswa text-center">Total Siswa</th>
+              <th class="col-siswa text-center">Siswa</th>
               <th class="col-terisi text-center">Terisi</th>
               <th class="col-bali text-center">Bali</th>
               <th class="col-jogja text-center">Jogja</th>
@@ -285,14 +364,14 @@ export const AdminOverviewStats: React.FC<AdminOverviewStatsProps> = ({
           </thead>
           <tbody>
             ${rowsHtml}
-            <tr class="total-row" style="background-color: #e2e8f0; font-weight: 800;">
-              <td style="font-weight: bold;">TOTAL SELURUH</td>
+            <tr class="total-row">
+              <td style="font-weight: 800; text-align: center;">TOTAL</td>
               <td>-</td>
-              <td class="text-center" style="font-weight: bold;">${totalSiswaAll}</td>
-              <td class="text-center" style="font-weight: bold;">${totalTerisiAll} / ${totalSiswaAll}</td>
-              <td class="text-center" style="color: #0f766e; font-weight: bold; background-color: #cbd5e1;">${totalBaliAll}</td>
-              <td class="text-center" style="color: #b45309; font-weight: bold; background-color: #cbd5e1;">${totalYogyaAll}</td>
-              <td><span class="badge badge-purple" style="background-color: #f3e8ff; color: #6b21a8; font-weight: bold; font-size: 10px;">${totalSizesStr}</span></td>
+              <td class="text-center" style="font-weight: 800;">${totalSiswaAll}</td>
+              <td class="text-center" style="font-weight: 800;">${totalTerisiAll} / ${totalSiswaAll}</td>
+              <td class="text-center" style="color: #0f766e; font-weight: 800;">${totalBaliAll}</td>
+              <td class="text-center" style="color: #b45309; font-weight: 800;">${totalYogyaAll}</td>
+              <td style="padding: 4px 6px;">${totalSizesStr}</td>
             </tr>
           </tbody>
         </table>

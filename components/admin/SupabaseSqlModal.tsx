@@ -82,11 +82,27 @@ CREATE TABLE IF NOT EXISTS public.rundowns (
     location TEXT
 );
 
+-- 5. Table: activity_logs
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    nis TEXT,
+    name TEXT,
+    "className" TEXT,
+    operator TEXT DEFAULT 'Admin',
+    details TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Performance Index for Activity Logs
+CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON public.activity_logs (timestamp DESC);
+
 -- Row Level Security (RLS) & Access Policies
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rundowns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public Read Access Students" ON public.students;
 DROP POLICY IF EXISTS "Public Write Access Students" ON public.students;
@@ -107,6 +123,11 @@ DROP POLICY IF EXISTS "Public Read Access Rundowns" ON public.rundowns;
 DROP POLICY IF EXISTS "Public Write Access Rundowns" ON public.rundowns;
 CREATE POLICY "Public Read Access Rundowns" ON public.rundowns FOR SELECT USING (true);
 CREATE POLICY "Public Write Access Rundowns" ON public.rundowns FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Public Read Access Activity Logs" ON public.activity_logs;
+DROP POLICY IF EXISTS "Public Write Access Activity Logs" ON public.activity_logs;
+CREATE POLICY "Public Read Access Activity Logs" ON public.activity_logs FOR SELECT USING (true);
+CREATE POLICY "Public Write Access Activity Logs" ON public.activity_logs FOR ALL USING (true);
 `;
 
 export const SupabaseSqlModal: React.FC<SupabaseSqlModalProps> = ({

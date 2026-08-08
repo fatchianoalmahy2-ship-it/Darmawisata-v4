@@ -51,12 +51,14 @@ export const WaliKelasSidebar: React.FC<WaliKelasSidebarProps> = ({
       icon: UserCheck,
       badge: 'Kelas Saya',
     },
-    {
-      id: 'DENAH_BUS' as AppTab,
-      label: 'Denah Bus Kelas',
-      subtitle: 'Nomor bus & posisi duduk',
-      icon: Bus,
-    },
+    ...(currentUser.role === 'ADMIN' ? [
+      {
+        id: 'DENAH_BUS' as AppTab,
+        label: 'Denah Bus Kelas',
+        subtitle: 'Nomor bus & posisi duduk',
+        icon: Bus,
+      }
+    ] : []),
     {
       id: 'PEMBAGIAN_KAMAR' as AppTab,
       label: 'Kamar Hotel Kelas',

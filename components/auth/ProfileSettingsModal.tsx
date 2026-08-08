@@ -104,7 +104,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
       // Verify current password
       if (isAdmin) {
         const creds = await AuthService.getAdminCredentials();
-        const isMatch = currentPasswordInput === creds.password || (creds.password === 'admin123' && currentPasswordInput === 'admin');
+        const isMatch = currentPasswordInput === creds.password || ((creds.password === '4dm1n' || creds.password === 'admin123') && (currentPasswordInput === '4dm1n' || currentPasswordInput === 'admin'));
         if (!isMatch) {
           setErrorMsg('Password Lama Admin yang Anda masukkan salah!');
           return;

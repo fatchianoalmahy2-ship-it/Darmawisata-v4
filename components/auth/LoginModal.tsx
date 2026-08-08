@@ -272,7 +272,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     type={showWaliPass ? 'text' : 'password'}
                     value={waliPassword}
                     onChange={(e) => setWaliPassword(e.target.value)}
-                    placeholder="Masukkan password (Default: wali123)"
+                    placeholder="Masukkan password"
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                   />
                   <button
@@ -284,7 +284,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  *Gunakan password wali kelas yang telah didaftarkan panitia (Default: <strong>wali123</strong>).
+                  *Gunakan password wali kelas yang telah didaftarkan oleh panitia.
                 </p>
               </div>
 
@@ -348,7 +348,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  *Gunakan username & password admin panitia (Default: <strong>admin</strong> / <strong>admin123</strong>)
+                  *Gunakan username & password admin panitia.
                 </p>
               </div>
 

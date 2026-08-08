@@ -49,6 +49,8 @@ export interface SchoolClass {
   homeroomTeacher: string;
   teacherPhone?: string;
   teacherPassword?: string;
+  manualWaliDestination?: 'BALI_GEL_1' | 'BALI_GEL_2' | 'YOGYAKARTA' | 'NOT_PARTICIPATING' | 'AUTO';
+  manualWaliNotes?: string;
 }
 
 export interface Bus {
@@ -134,6 +136,21 @@ export interface AppSettings {
   lastAutoRecapSentStatus?: string;
   busAllocationRules?: string;
   roomAllocationRules?: string;
+  totalGelombangBali?: number;
+  showWaliParticipationStatusInPortal?: boolean;
+  waliQuotaMode?: 'auto' | 'manual';
+  customBusGuides?: { [busId: string]: { guide1: string; guide2: string } };
+}
+
+export interface ActivityLog {
+  id: string;
+  action: 'ADD' | 'DELETE' | 'UPDATE' | 'BULK_IMPORT' | 'CLEAR';
+  nis?: string;
+  name?: string;
+  className?: string;
+  operator: string;
+  details: string;
+  timestamp: string;
 }
 
 export interface WaliKelasSummary {

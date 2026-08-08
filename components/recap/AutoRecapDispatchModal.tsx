@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { SchoolClass, Student, AppSettings } from '@/types';
 import { RecapGeneratorService } from '@/services/recapGenerator';
@@ -16,6 +16,11 @@ import {
   Users,
   Building2,
   Zap,
+  QrCode,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 
 interface AutoRecapDispatchModalProps {
@@ -40,6 +45,38 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
   const [dispatchTarget, setDispatchTarget] = useState<'ALL' | string>('ALL'); // 'ALL' or className
   const [copied, setCopied] = useState(false);
   const [isDispatched, setIsDispatched] = useState(false);
+  const [dispatchResultMsg, setDispatchResultMsg] = useState('');
+
+  // Live WhatsApp Status states
+  const [waStatus, setWaStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'QR_READY' | 'CONNECTED' | 'ERROR'>('DISCONNECTED');
+  const [qrCodeData, setQrCodeData] = useState<string>('');
+  const [waError, setWaError] = useState<string>('');
+  const [isConnectingBackend, setIsConnectingBackend] = useState(false);
+  const [isTriggeringCron, setIsTriggeringCron] = useState(false);
+
+  // Poll WhatsApp status when the modal is open
+  const fetchWhatsAppStatus = React.useCallback(async () => {
+    if (settings?.whatsappMode !== 'WEB_JS') return;
+    try {
+      const res = await fetch('/api/whatsapp/config');
+      if (res.ok) {
+        const data = await res.json();
+        setWaStatus(data.status);
+        setQrCodeData(data.qr);
+        setWaError(data.error);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch WhatsApp Web status:', err);
+    }
+  }, [settings?.whatsappMode]);
+
+  useEffect(() => {
+    if (isOpen && settings?.whatsappMode === 'WEB_JS') {
+      fetchWhatsAppStatus();
+      const interval = setInterval(fetchWhatsAppStatus, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [isOpen, settings?.whatsappMode, fetchWhatsAppStatus]);
 
   if (!isOpen) return null;
 
@@ -66,6 +103,39 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const handleInitializeClient = async () => {
+    setIsConnectingBackend(true);
+    try {
+      await fetch('/api/whatsapp/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' }),
+      });
+      fetchWhatsAppStatus();
+    } catch (err) {
+      console.error('Failed to initialize WhatsApp client:', err);
+    } finally {
+      setIsConnectingBackend(false);
+    }
+  };
+
+  const handleDisconnectClient = async () => {
+    setIsConnectingBackend(true);
+    try {
+      await fetch('/api/whatsapp/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disconnect' }),
+      });
+      setQrCodeData('');
+      fetchWhatsAppStatus();
+    } catch (err) {
+      console.error('Failed to disconnect WhatsApp client:', err);
+    } finally {
+      setIsConnectingBackend(false);
+    }
+  };
+
   const handleOpenWhatsApp = () => {
     const encodedText = encodeURIComponent(generatedText);
     const targetPhone = settings?.autoRecapTargetPhone?.trim();
@@ -78,7 +148,6 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
 
     window.open(waUrl, '_blank');
 
-    // Update dispatch status
     const nowStr = new Date().toLocaleString('id-ID', {
       dateStyle: 'medium',
       timeStyle: 'short',
@@ -87,34 +156,56 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
     if (settings) {
       onSaveSettings({
         ...settings,
-        lastAutoRecapSentAt: nowStr,
-        lastAutoRecapSentStatus: 'SEWAKTU_MANUAL',
-      });
-    }
-
-    setIsDispatched(true);
-    setTimeout(() => setIsDispatched(false), 3000);
-  };
-
-  const handleSimulateAutoDispatch = () => {
-    const nowStr = new Date().toLocaleString('id-ID', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
-
-    if (settings) {
-      onSaveSettings({
-        ...settings,
-        lastAutoRecapSentAt: nowStr,
+        lastAutoRecapSentAt: `${nowStr} (Manual)`,
         lastAutoRecapSentStatus: 'BERHASIL',
       });
     }
 
+    setDispatchResultMsg('Rekap manual dialihkan ke WhatsApp Web / API!');
     setIsDispatched(true);
-    setTimeout(() => {
-      setIsDispatched(false);
-      onClose();
-    }, 1800);
+    setTimeout(() => setIsDispatched(false), 3000);
+  };
+
+  const handleSimulateAutoDispatch = async () => {
+    setIsTriggeringCron(true);
+    setDispatchResultMsg('');
+
+    try {
+      const res = await fetch('/api/cron/send-recap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ simulate: true }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Callback parent update settings
+        if (settings) {
+          onSaveSettings({
+            ...settings,
+            lastAutoRecapSentAt: data.lastAutoRecapSentAt || `${data.timestamp} (${data.method})`,
+            lastAutoRecapSentStatus: 'BERHASIL',
+          });
+        }
+
+        setDispatchResultMsg(`Sukses menjalankan Cron Otomatis! Laporan dikirim via ${data.method}.`);
+        setIsDispatched(true);
+        setTimeout(() => {
+          setIsDispatched(false);
+          onClose();
+        }, 2200);
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Server error.');
+      }
+    } catch (err: any) {
+      setDispatchResultMsg(`Gagal: ${err.message || err}`);
+      setIsDispatched(true);
+      setTimeout(() => setIsDispatched(false), 3500);
+    } finally {
+      setIsTriggeringCron(false);
+    }
   };
 
   const totalUnregistered = students.filter((s) => !s.isRegistered).length;
@@ -213,6 +304,120 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
         </div>
 
         {/* Dynamic WhatsApp Live Preview Box */}
+        {settings?.whatsappMode === 'WEB_JS' && (
+          <div className="p-4 bg-slate-900 text-white border border-slate-800 rounded-2xl space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+                <span className="font-black text-xs uppercase tracking-wider text-emerald-400">
+                  📱 Status Sesi WhatsApp Web (Self-Hosted)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {waStatus === 'CONNECTED' ? (
+                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-black border border-emerald-500/30 flex items-center gap-1">
+                    <Wifi className="w-3 h-3" /> CONNECTED
+                  </span>
+                ) : waStatus === 'QR_READY' ? (
+                  <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded-full text-[10px] font-black border border-amber-500/30 flex items-center gap-1 animate-pulse">
+                    <QrCode className="w-3 h-3" /> SCAN QR CODE
+                  </span>
+                ) : waStatus === 'CONNECTING' ? (
+                  <span className="px-2 py-0.5 bg-sky-500/20 text-sky-300 rounded-full text-[10px] font-black border border-sky-500/30 flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> CONNECTING...
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full text-[10px] font-black border border-slate-700 flex items-center gap-1">
+                    <WifiOff className="w-3 h-3" /> DISCONNECTED
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              <div className="space-y-2 text-xs">
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  Sesi lokal berjalan di server menggunakan browser tersemat (headless). Silakan inisialisasi dan pindai untuk mengirim laporan otomatis tanpa intervensi.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {waStatus === 'DISCONNECTED' || waStatus === 'ERROR' ? (
+                    <button
+                      type="button"
+                      disabled={isConnectingBackend}
+                      onClick={handleInitializeClient}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isConnectingBackend ? 'animate-spin' : ''}`} />
+                      <span>Hubungkan WA Web</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isConnectingBackend}
+                      onClick={handleDisconnectClient}
+                      className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-800 text-white font-extrabold rounded-lg text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <WifiOff className="w-3.5 h-3.5" />
+                      <span>Putus Koneksi WA</span>
+                    </button>
+                  )}
+                  
+                  <button
+                    type="button"
+                    onClick={fetchWhatsAppStatus}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg cursor-pointer"
+                    title="Refresh Status"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {waError && (
+                  <p className="text-rose-400 font-medium text-[10px] mt-2 flex items-start gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{waError}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                {waStatus === 'QR_READY' && qrCodeData ? (
+                  <div className="text-center space-y-1.5">
+                    <img
+                      src={qrCodeData}
+                      alt="WhatsApp Web QR Code"
+                      className="w-32 h-32 bg-white p-1.5 rounded-lg border border-slate-700 inline-block shadow-lg"
+                    />
+                    <p className="text-[10px] font-bold text-amber-300 animate-pulse">
+                      Pindai via WA &gt; Perangkat Tertaut
+                    </p>
+                  </div>
+                ) : waStatus === 'CONNECTED' ? (
+                  <div className="text-center py-5 space-y-2">
+                    <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/30">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-emerald-300">Siap & Terhubung!</p>
+                      <p className="text-[9px] text-slate-400">Pesan otomatis akan terkirim via browser ini.</p>
+                    </div>
+                  </div>
+                ) : waStatus === 'CONNECTING' ? (
+                  <div className="text-center py-5 space-y-2">
+                    <RefreshCw className="w-6 h-6 text-emerald-400 animate-spin mx-auto" />
+                    <p className="text-[9px] text-slate-400 font-bold">Menyiapkan Mesin Puppeteer...</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-5 text-slate-500 text-xs font-bold space-y-1">
+                    <WifiOff className="w-5 h-5 text-slate-600 mx-auto" />
+                    <p>WhatsApp Belum Terhubung</p>
+                    <p className="text-[9px] text-slate-600 font-medium">Klik &apos;Hubungkan WA Web&apos; di kiri.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
@@ -237,7 +442,7 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
         {isDispatched && (
           <div className="p-3 bg-emerald-600 text-white font-extrabold rounded-xl text-xs flex items-center gap-2 animate-bounce">
             <CheckCircle2 className="w-4 h-4 text-white" />
-            <span>Rekapitulasi WhatsApp berhasil diproses & log waktu pengiriman diperbarui!</span>
+            <span>{dispatchResultMsg || 'Rekapitulasi WhatsApp berhasil diproses & log waktu pengiriman diperbarui!'}</span>
           </div>
         )}
 
@@ -254,12 +459,17 @@ export const AutoRecapDispatchModal: React.FC<AutoRecapDispatchModalProps> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <button
               type="button"
+              disabled={isTriggeringCron}
               onClick={handleSimulateAutoDispatch}
-              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 text-slate-200 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-950 text-slate-200 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-700"
               title="Simulasi Trigger Gateway Pukul 16:00"
             >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Simulasi Gateway 16:00</span>
+              {isTriggeringCron ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              ) : (
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+              )}
+              <span>{isTriggeringCron ? 'Mengirim...' : 'Simulasi Gateway 16:00'}</span>
             </button>
 
             <button

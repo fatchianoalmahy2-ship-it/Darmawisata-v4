@@ -15,6 +15,7 @@ export interface TableQueryOptions<T> {
   initialPageSize?: number;
   searchFields: (keyof T)[];
   filterFn?: (item: T, filters: Record<string, any>) => boolean;
+  sortFn?: (a: T, b: T, sort: SortConfig) => number;
 }
 
 export function useTableQuery<T>(data: T[], options: TableQueryOptions<T>) {
@@ -86,7 +87,9 @@ export function useTableQuery<T>(data: T[], options: TableQueryOptions<T>) {
     }
 
     // 3. Sort
-    if (sort.field) {
+    if (options.sortFn) {
+      result.sort((a, b) => options.sortFn!(a, b, sort));
+    } else if (sort.field) {
       result.sort((a, b) => {
         const aVal = a[sort.field as keyof T];
         const bVal = b[sort.field as keyof T];

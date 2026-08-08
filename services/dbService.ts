@@ -237,6 +237,20 @@ export const dbService = {
 
   // Process the queue when online
   isSyncing: false,
+  async clearAllCaches(): Promise<void> {
+    try {
+      await Promise.all([
+        this.clearStudents(),
+        this.clearClasses(),
+        this.clearRundowns(),
+      ]);
+      const store = await getStore('settings', 'readwrite');
+      store.delete('global');
+    } catch (e) {
+      console.warn('Error clearing IndexedDB cache:', e);
+    }
+  },
+
   async triggerSync(): Promise<void> {
     if (this.isSyncing) return;
     if (typeof window !== 'undefined' && (window as any).__forceOffline) {

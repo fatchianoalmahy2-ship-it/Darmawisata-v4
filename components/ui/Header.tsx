@@ -242,9 +242,9 @@ export const Header: React.FC<HeaderProps> = ({
             {isPublic && <span title="Memerlukan Login"><Lock className="w-3 h-3 text-amber-500 shrink-0" /></span>}
           </button>
 
-          {/* TAB 4: Denah Bus (Wali Kelas / Admin) */}
+          {/* TAB 4: Denah Bus (Admin Only) */}
           <button
-            onClick={() => handleTabClick('DENAH_BUS', 'WALI_KELAS', 'Denah Bus')}
+            onClick={() => handleTabClick('DENAH_BUS', 'ADMIN', 'Denah Bus')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
               activeTab === 'DENAH_BUS'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
@@ -253,7 +253,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Bus className="w-4 h-4" />
             <span>4. Denah Bus</span>
-            {isPublic && <span title="Memerlukan Login"><Lock className="w-3 h-3 text-amber-500 shrink-0" /></span>}
+            {!isAdmin && <span title="Memerlukan Login Admin"><Lock className="w-3 h-3 text-amber-500 shrink-0" /></span>}
           </button>
 
           {/* TAB 5: Kamar Otomatis (Wali Kelas / Admin) */}

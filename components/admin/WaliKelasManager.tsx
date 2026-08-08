@@ -6,26 +6,25 @@ import { motion } from 'motion/react';
 import { Modal } from '@/components/ui/Modal';
 import { 
   UserCheck, 
-  Search, 
   Edit3, 
   KeyRound, 
   Phone, 
   ExternalLink, 
-  Award, 
   CheckCircle2, 
-  XCircle, 
   RefreshCw, 
   AlertTriangle,
   Send,
-  Lock,
   Eye,
   EyeOff,
-  UserPlus
+  FileSpreadsheet,
+  Upload,
+  AlertCircle
 } from 'lucide-react';
 import { formatWhatsAppLink, normalizeClassName } from '@/lib/utils';
 import { useTableQuery } from '@/hooks/useTableQuery';
 import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { PaginationControls } from '@/components/ui/PaginationControls';
+import { WaliAllocationManager } from './WaliAllocationManager';
 
 interface WaliKelasManagerProps {
   classes: SchoolClass[];
@@ -43,8 +42,13 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
   onAddClass,
 }) => {
   // Modals
+  const [activeSubTab, setActiveSubTab] = useState<'CREDENTIALS' | 'ALLOCATION'>('CREDENTIALS');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<SchoolClass | null>(null);
+
+  // Import State
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState({ type: '', msg: '' });
   
   // Form state
   const [formTeacherName, setFormTeacherName] = useState('');
@@ -166,7 +170,7 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
     totalPages,
     handlePageChange,
   } = useTableQuery<any>(classStatsList, {
-    searchFields: ['homeroomTeacher', 'name', 'teacherPhone'],
+    searchFields: ['homeroomTeacher', 'name', 'teacherPhone', 'department'],
     initialPageSize: 6,
     filterFn: (item, activeFilters) => {
       const statusVal = activeFilters.status;
@@ -177,19 +181,186 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
     },
   });
 
+  const handleExportExcel = () => {
+    const exportData = filteredList.map((item, idx) => ({
+      No: idx + 1,
+      'Nama Wali Kelas': item.homeroomTeacher,
+      Kelas: item.name,
+      Kejuruan: item.department,
+      'No Kontak': item.teacherPhone || '',
+      Username: `wali_${item.name.replace(/\s+/g, '_').toLowerCase()}`,
+      Password: item.teacherPassword || 'wali123',
+      'Persentase Partisipasi': `${item.percentage}%`,
+      'Jumlah Siswa Terdaftar': item.registeredCount,
+      'Total Siswa': item.totalCount,
+      Status: item.isCompleted ? 'Tuntas' : 'Belum Tuntas',
+    }));
+    import('@/services/excelService').then(({ ExcelService }) => {
+      ExcelService.exportToExcel(exportData, 'Data_Kredensial_Wali_Kelas', 'Wali Kelas');
+    });
+  };
+
+  const handlePrint = () => {
+    if (typeof window !== 'undefined') {
+      window.print();
+    }
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus({ type: 'info', msg: 'Membaca file...' });
+
+    try {
+      const XLSX = await import('xlsx');
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const workbook = XLSX.read(bstr, { type: 'binary' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '' });
+
+          if (jsonData.length === 0) {
+            setImportStatus({ type: 'error', msg: 'File Excel kosong atau tidak valid.' });
+            return;
+          }
+
+          let updatedCount = 0;
+          let addedCount = 0;
+
+          jsonData.forEach((row: any, idx: number) => {
+            const keys = Object.keys(row);
+            const findKeyVal = (searchTerms: string[]) => {
+              const matchedKey = keys.find(k => searchTerms.some(term => k.toLowerCase().includes(term)));
+              return matchedKey ? String(row[matchedKey]).trim() : '';
+            };
+
+            const className = normalizeClassName(findKeyVal(['kelas', 'rombel', 'nama kelas']));
+            if (!className) return;
+
+            const teacher = findKeyVal(['wali kelas', 'guru', 'nama wali']) || 'Belum Diisi';
+            const phone = findKeyVal(['no hp', 'no wa', 'telepon', 'kontak', 'hp', 'phone']);
+            const password = findKeyVal(['password', 'sandi', 'pass']);
+            const department = findKeyVal(['kejuruan', 'departemen', 'kompetensi', 'jurusan']) || 'Teknik Otomotif';
+
+            const existing = classes.find(c => normalizeClassName(c.name) === normalizeClassName(className));
+
+            if (existing) {
+              const updated: SchoolClass = {
+                ...existing,
+                homeroomTeacher: teacher,
+                teacherPhone: phone || existing.teacherPhone,
+                teacherPassword: password || existing.teacherPassword,
+                department: department || existing.department,
+              };
+              onUpdateClass(updated);
+              updatedCount++;
+            } else {
+              const newCls: SchoolClass = {
+                id: `class-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+                name: className,
+                department,
+                homeroomTeacher: teacher,
+                teacherPhone: phone || undefined,
+                teacherPassword: password || undefined,
+                totalStudents: 0,
+              };
+              onAddClass(newCls);
+              addedCount++;
+            }
+          });
+
+          setImportStatus({
+            type: 'success',
+            msg: `Impor berhasil! Ditambahkan: ${addedCount} rombel baru, Diperbarui: ${updatedCount} akun wali kelas.`
+          });
+        } catch (err: any) {
+          setImportStatus({ type: 'error', msg: `Gagal membaca Excel: ${err.message}` });
+        }
+      };
+      reader.readAsBinaryString(file);
+    } catch (err: any) {
+      setImportStatus({ type: 'error', msg: `Gagal memuat modul excel: ${err.message}` });
+    }
+  };
+
   return (
     <div className="space-y-6" id="wali-kelas-manager-section">
       {/* Upper Information Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 mb-1">
-            <UserCheck className="w-3.5 h-3.5 text-blue-600" /> Management Akun Wali Kelas
+            <UserCheck className="w-3.5 h-3.5 text-blue-600" /> Management Wali Kelas & Pembagian Tour
           </div>
-          <h2 className="text-lg font-black text-slate-900">Kontrol Akun & Kelas Diampu Wali Kelas</h2>
+          <h2 className="text-lg font-black text-slate-900">Kontrol Akun, Kredensial & Pembagian Wali Kelas</h2>
           <p className="text-xs text-slate-500">
-            Admin memiliki hak akses penuh untuk membuat akun, mengatur kelas yang diampu, mengubah password wali kelas, memantau tuntas verifikasi, serta mengirimkan kredensial via WA.
+            Kelola kredensial akun wali kelas, pantau progres verifikasi angket, serta lihat ranking otomatis kepesertaan wali kelas ke Bali / Jogja.
           </p>
         </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setImportStatus({ type: '', msg: '' });
+              setIsImportOpen(true);
+            }}
+            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            <span>Import Akun Excel</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-Tab Navigation Switcher */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 no-print">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('CREDENTIALS')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === 'CREDENTIALS'
+              ? 'bg-emerald-600 text-white shadow-xs font-black'
+              : 'text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <KeyRound className="w-4 h-4" />
+          <span>Akses & Kredensial Akun Wali</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('ALLOCATION')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === 'ALLOCATION'
+              ? 'bg-emerald-600 text-white shadow-xs font-black'
+              : 'text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Pembagian Wali Ke Bali / Jogja & Ranking</span>
+        </button>
+      </div>
+
+      {/* Sub Tab 2: ALLOCATION */}
+      {activeSubTab === 'ALLOCATION' && (
+        <WaliAllocationManager
+          classes={classes}
+          students={students}
+          settings={settings}
+          onUpdateClass={onUpdateClass}
+        />
+      )}
+
+      {/* Sub Tab 1: CREDENTIALS */}
+      {activeSubTab === 'CREDENTIALS' && (
+        <>
+
+      {/* Print only Header */}
+      <div className="p-4 border-b border-slate-100 hidden print:block">
+        <h3 className="font-extrabold text-lg text-slate-900">REKAP KREDENSIAL DAN PARTISIPASI WALI KELAS</h3>
+        <p className="text-xs text-slate-600">TOTAL DATA: {filteredList.length} WALI KELAS</p>
       </div>
 
       {/* Stats Cards */}
@@ -237,7 +408,7 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
           <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Kontak WA Terdaftar</p>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-slate-800">{withPhoneCount}</span>
-            <span className="text-xs text-slate-500 font-bold">Wali Kelas ({totalWaliKelas > 0 ? Math.round((withPhoneCount / totalWaliKelas) * 100) : 0}%)</span>
+            <span className="text-xs text-slate-500 font-bold font-sans">Wali Kelas ({totalWaliKelas > 0 ? Math.round((withPhoneCount / totalWaliKelas) * 100) : 0}%)</span>
           </div>
           <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
             <div 
@@ -256,6 +427,8 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
         activeFilters={filters}
         onFilterChange={setFilters}
         onClearFilters={handleClearFilters}
+        onPrint={handlePrint}
+        onExportExcel={handleExportExcel}
         filters={[
           {
             key: 'status',
@@ -370,7 +543,7 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
                           </code>
                           <button
                             onClick={() => togglePasswordVisibility(item.id)}
-                            className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                            className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer no-print"
                             title={isShow ? 'Sembunyikan' : 'Tampilkan'}
                           >
                             {isShow ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -391,7 +564,7 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
                       <div className="flex items-center justify-between text-[10px] font-bold">
                         <span className="text-slate-500">Partisipasi Angket:</span>
                         <span className={`${item.isCompleted ? 'text-emerald-600' : 'text-slate-700'}`}>
-                          {item.registeredCount} / {item.totalCount} Siswa ({item.percentage}%)
+                          {item.registeredCount} / {item.totalCount} Siswa ({item.percentage}% )
                         </span>
                       </div>
                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/80">
@@ -405,7 +578,7 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 no-print">
                   <button
                     onClick={() => handleResetPassword(item)}
                     disabled={!isPasswordCustom}
@@ -454,6 +627,8 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
             itemName="wali kelas"
           />
         </div>
+      )}
+      </>
       )}
 
       {/* Modal Edit Account & Class */}
@@ -562,6 +737,66 @@ export const WaliKelasManager: React.FC<WaliKelasManagerProps> = ({
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Import Excel */}
+      <Modal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        title="Import Akun Wali Kelas"
+        subtitle="Unduh/unggah spreadsheet data akun wali kelas untuk integrasi cepat"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800 space-y-1">
+              <p className="font-extrabold">Panduan Kolom Import:</p>
+              <p className="font-medium leading-relaxed">
+                Spreadsheet harus memuat header baris pertama berikut:
+                <strong> Kelas </strong>, 
+                <strong> Wali Kelas </strong>, 
+                <strong> No HP </strong> / <strong> Kontak </strong> (opsional), 
+                <strong> Password </strong> (opsional).
+                <br />
+                Jika nama kelas sudah terdaftar, sistem akan melakukan <strong>sinkronisasi & update</strong> data nomor HP serta custom password baru.
+              </p>
+            </div>
+          </div>
+
+          <div className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-2xl p-6 transition-colors relative flex flex-col items-center justify-center text-center cursor-pointer">
+            <input
+              type="file"
+              accept=".xlsx,.xls,.ods"
+              onChange={handleImportExcel}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            />
+            <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 mb-3">
+              <Upload className="w-6 h-6" />
+            </div>
+            <p className="text-xs font-extrabold text-slate-800">Seret file Excel kredensial di sini</p>
+            <p className="text-[10px] text-slate-400 mt-1">XLSX, XLS, ODS up to 10MB</p>
+          </div>
+
+          {importStatus.type && (
+            <div className={`p-3.5 rounded-xl text-xs font-bold border ${
+              importStatus.type === 'error' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+              importStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+              'bg-blue-50 text-blue-800 border-blue-200'
+            }`}>
+              {importStatus.msg}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-3 border-t border-slate-100">
+            <button
+              onClick={() => setIsImportOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

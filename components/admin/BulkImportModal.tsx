@@ -324,25 +324,46 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
   };
 
   const mapFlatRowsToClassData = (rows: Record<string, any>[]): ParsedClassData[] => {
+    const classToTeacherMap: Record<string, Record<string, number>> = {};
+
     const mappedStudents: Student[] = rows.map((row, idx) => {
-      const findVal = (keys: string[]) => {
-        const foundKey = Object.keys(row).find((k) =>
-          keys.some((key) => k.toLowerCase().trim() === key.toLowerCase().trim() || k.toLowerCase().trim().includes(key.toLowerCase().trim()))
-        );
+      const findVal = (keys: string[], excludeSubstrings?: string[]) => {
+        const cleanKeys = keys.map(k => k.toLowerCase().trim());
+        
+        // 1. Try exact match first
+        let foundKey = Object.keys(row).find((k) => {
+          const lowerK = k.toLowerCase().trim();
+          return cleanKeys.includes(lowerK);
+        });
+        
+        // 2. Try substring match if exact fails
+        if (!foundKey) {
+          foundKey = Object.keys(row).find((k) => {
+            const lowerK = k.toLowerCase().trim();
+            
+            // Check exclusions
+            if (excludeSubstrings && excludeSubstrings.some(ex => lowerK.includes(ex.toLowerCase().trim()))) {
+              return false;
+            }
+            
+            return cleanKeys.some((key) => lowerK.includes(key));
+          });
+        }
+        
         return foundKey ? String(row[foundKey]).trim() : '';
       };
 
-      const name = findVal(['nama siswa', 'nama']);
-      const nis = findVal(['nis', 'nisn', 'nomor induk']);
-      const className = normalizeClassName(findVal(['kelas', 'class'])) || 'XII TKR 1';
+      const name = findVal(['nama siswa', 'nama', 'student name', 'siswa'], ['orang tua', 'ortu', 'wali', 'kelas', 'guru', 'sekolah']);
+      const nis = findVal(['nis', 'nisn', 'nomor induk', 'no induk', 'id']);
+      const className = normalizeClassName(findVal(['kelas', 'class', 'className', 'rombel'], ['wali'])) || 'XII TKR 1';
       
-      const rawGender = findVal(['jenis kelamin', 'gender', 'l/p', 'jk']).toUpperCase();
+      const rawGender = findVal(['jenis kelamin', 'gender', 'l/p', 'jk', 'sex']).toUpperCase();
       let gender: GenderType = 'LAKI-LAKI';
       if (rawGender.includes('P') || rawGender.includes('PEREMPUAN') || rawGender.includes('FEMALE')) {
         gender = 'PEREMPUAN';
       }
 
-      const rawDest = findVal(['tujuan', 'destination']).toUpperCase();
+      const rawDest = findVal(['tujuan', 'destination', 'pilihan tujuan']).toUpperCase();
       let destination: DestinationType | undefined = undefined;
       if (rawDest.includes('BALI')) destination = 'BALI';
       else if (rawDest.includes('YOGYAKARTA') || rawDest.includes('YOGYA') || rawDest.includes('JOGJA')) destination = 'YOGYAKARTA';
@@ -357,14 +378,15 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         wave = 'YOGYA_GEL_1';
       }
 
-      const rawSize = findVal(['ukuran kaos', 'ukuran', 'tshirt', 'kaos']).toUpperCase();
+      const rawSize = findVal(['ukuran kaos', 'ukuran', 'tshirt', 'kaos', 'size']).toUpperCase();
       const validSizes: TShirtSize[] = ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'];
       const tShirtSize = validSizes.find((s) => s === rawSize || rawSize.includes(s)) as TShirtSize | undefined;
 
-      const parentName = findVal(['orang tua', 'nama ortu', 'wali murid', 'ortu']);
-      const parentPhone = findVal(['wa ortu', 'telepon ortu', 'no ortu', 'hp ortu', 'kontak ortu']);
+      const parentName = findVal(['orang tua', 'nama ortu', 'wali murid', 'ortu', 'wali', 'nama wali'], ['kelas', 'siswa', 'guru']);
+      const address = findVal(['alamat', 'alamat lengkap', 'address', 'domisili', 'alamat ortu', 'alamat siswa']);
+      const parentPhone = findVal(['wa ortu', 'telepon ortu', 'no ortu', 'hp ortu', 'kontak ortu', 'wa wali', 'hp wali']);
       const studentPhone = findVal(['wa siswa', 'telepon siswa', 'no siswa', 'hp siswa', 'kontak siswa']);
-      const medicalHistory = findVal(['riwayat medis', 'riwayat penyakit', 'medis', 'penyakit']);
+      const medicalHistory = findVal(['riwayat medis', 'riwayat penyakit', 'medis', 'penyakit', 'sakit']);
       
       const rawWaiver = findVal(['beasiswa', 'jalur', 'diskon', 'potongan', 'waiver']).toUpperCase();
       let waiverType: WaiverType = 'NONE';
@@ -374,8 +396,16 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
       const rawBus = findVal(['bus #', 'bus', 'nomor bus', 'no bus']);
       const busNumber = rawBus ? parseInt(rawBus.replace(/[^0-9]/g, ''), 10) || undefined : undefined;
 
-      const rawRoom = findVal(['kamar #', 'kamar', 'nomor kamar', 'no kamar']);
+      const rawRoom = findVal(['kamar #', 'kamar', 'nomor kamar', 'no kamar', 'room']);
       const roomNumber = rawRoom ? parseInt(rawRoom.replace(/[^0-9]/g, ''), 10) || undefined : undefined;
+
+      const rowTeacher = findVal(['wali kelas', 'nama wali kelas', 'guru wali', 'homeroom teacher', 'homeroom', 'walikelas'], ['murid', 'ortu', 'orang tua', 'siswa']);
+      if (rowTeacher && className) {
+        if (!classToTeacherMap[className]) {
+          classToTeacherMap[className] = {};
+        }
+        classToTeacherMap[className][rowTeacher] = (classToTeacherMap[className][rowTeacher] || 0) + 1;
+      }
 
       const isRegistered = Boolean(destination === 'BALI' || destination === 'YOGYAKARTA');
 
@@ -389,6 +419,8 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         wave,
         tShirtSize,
         parentName: parentName || undefined,
+        address: address || undefined,
+        parentAddress: address || undefined,
         parentPhone: parentPhone || undefined,
         studentPhone: studentPhone || undefined,
         medicalHistory: medicalHistory || undefined,
@@ -411,9 +443,21 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
     const results: ParsedClassData[] = [];
     Object.entries(classGroups).forEach(([className, students]) => {
+      let homeroomTeacher = `Wali Kelas ${className}`;
+      const teacherCounts = classToTeacherMap[className];
+      if (teacherCounts) {
+        let maxCount = 0;
+        Object.entries(teacherCounts).forEach(([teacher, count]) => {
+          if (count > maxCount && teacher.trim().length > 0) {
+            maxCount = count;
+            homeroomTeacher = teacher;
+          }
+        });
+      }
+
       results.push({
         className,
-        homeroomTeacher: `Wali Kelas ${className}`,
+        homeroomTeacher,
         students,
       });
     });
@@ -695,7 +739,33 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
         return;
       }
 
-      onImportSuccess(allStudents, allSchoolClasses);
+      // Deduplicate allStudents before calling onImportSuccess
+      const uniqueStudentsMap = new Map<string, Student>();
+      allStudents.forEach((st) => {
+        const nisKey = st.nis ? st.nis.trim().toLowerCase() : '';
+        const nameClassKey = `${st.name.trim().toLowerCase()}_${st.className.trim().toLowerCase()}`;
+        const key = nisKey && !nisKey.startsWith('nis-') ? `nis_${nisKey}` : `name_${nameClassKey}`;
+
+        if (!uniqueStudentsMap.has(key)) {
+          uniqueStudentsMap.set(key, st);
+        } else {
+          const existing = uniqueStudentsMap.get(key)!;
+          uniqueStudentsMap.set(key, {
+            ...existing,
+            address: existing.address || st.address,
+            parentAddress: existing.parentAddress || st.parentAddress,
+            parentPhone: existing.parentPhone || st.parentPhone,
+            studentPhone: existing.studentPhone || st.studentPhone,
+            medicalHistory: existing.medicalHistory || st.medicalHistory,
+            parentName: existing.parentName || st.parentName,
+            tShirtSize: existing.tShirtSize || st.tShirtSize,
+          });
+        }
+      });
+
+      const deduplicatedStudents = Array.from(uniqueStudentsMap.values());
+
+      onImportSuccess(deduplicatedStudents, allSchoolClasses);
       setIsProcessing(false);
       onClose();
     } catch (err: any) {

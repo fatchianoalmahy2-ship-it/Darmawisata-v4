@@ -31,6 +31,9 @@ import {
   FileText,
   Printer,
   Edit3,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 
 interface StudentManagerProps {
@@ -96,6 +99,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
   const [formSize, setFormSize] = useState<string>('');
   const [formIsRegistered, setFormIsRegistered] = useState<boolean>(false);
   const [formParent, setFormParent] = useState('');
+  const [formAddress, setFormAddress] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formStudentPhone, setFormStudentPhone] = useState('');
   const [formMedicalHistory, setFormMedicalHistory] = useState('');
@@ -121,6 +125,8 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     paginatedData,
     totalPages,
     handlePageChange,
+    sort,
+    handleSort,
   } = useTableQuery<Student>(students, {
     searchFields: ['name', 'nis'],
     initialPageSize: 10,
@@ -132,6 +138,51 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
       if (waveVal && item.wave !== waveVal) return false;
 
       return true;
+    },
+    sortFn: (a, b, sortConfig) => {
+      if (sortConfig.field) {
+        let aVal: any = a[sortConfig.field as keyof Student];
+        let bVal: any = b[sortConfig.field as keyof Student];
+
+        if (sortConfig.field === 'busRoom') {
+          aVal = (a.busNumber || 0) * 1000 + (a.roomNumber || 0);
+          bVal = (b.busNumber || 0) * 1000 + (b.roomNumber || 0);
+        }
+
+        if (aVal !== undefined && bVal !== undefined) {
+          let cmp = 0;
+          if (typeof aVal === 'string' && typeof bVal === 'string') {
+            cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+          } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+            cmp = aVal - bVal;
+          } else {
+            cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+          }
+
+          if (cmp !== 0) {
+            return sortConfig.direction === 'asc' ? cmp : -cmp;
+          }
+        }
+      }
+
+      // Default fallback: Jurusan -> Kelas -> NIS
+      const getDept = (clsName: string) => {
+        const found = classes.find((c) => c.name === clsName);
+        if (found && found.department) return found.department;
+        const parts = clsName.split(' ');
+        if (parts.length >= 2) return parts[1];
+        return clsName;
+      };
+
+      const deptA = getDept(a.className);
+      const deptB = getDept(b.className);
+      const deptCompare = deptA.localeCompare(deptB, undefined, { numeric: true, sensitivity: 'base' });
+      if (deptCompare !== 0) return deptCompare;
+
+      const classCompare = a.className.localeCompare(b.className, undefined, { numeric: true, sensitivity: 'base' });
+      if (classCompare !== 0) return classCompare;
+
+      return a.nis.localeCompare(b.nis, undefined, { numeric: true, sensitivity: 'base' });
     },
   });
 
@@ -175,6 +226,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     setFormSize('');
     setFormIsRegistered(false);
     setFormParent('');
+    setFormAddress('');
     setFormPhone('');
     setFormStudentPhone('');
     setFormMedicalHistory('');
@@ -196,6 +248,7 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     setFormSize(st.tShirtSize || '');
     setFormIsRegistered(Boolean(st.isRegistered));
     setFormParent(st.parentName || '');
+    setFormAddress(st.address || st.parentAddress || '');
     setFormPhone(st.parentPhone || '');
     setFormStudentPhone(st.studentPhone || '');
     setFormMedicalHistory(st.medicalHistory || '');
@@ -208,20 +261,38 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
 
   const handleSaveStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formNis || !formName) return;
+    const trimmedNis = formNis.trim();
+    const trimmedName = formName.trim();
+    if (!trimmedNis || !trimmedName) return;
+
+    // Duplicate Check logic: Prevent existing NIS or existing Name+Class
+    const duplicate = students.find(
+      (s) => s.id !== editingStudent?.id && (
+        (trimmedNis && s.nis.trim().toLowerCase() === trimmedNis.toLowerCase()) ||
+        (s.name.trim().toLowerCase() === trimmedName.toLowerCase() && s.className.trim().toLowerCase() === formClass.trim().toLowerCase())
+      )
+    );
+
+    if (duplicate) {
+      alert(`⚠️ PERINGATAN DATA DUPLIKAT!\n\nSiswa dengan NIS "${trimmedNis}" atau Nama "${trimmedName}" sudah terdaftar di kelas ${duplicate.className}.\n\nProses simpan data siswa dibatalkan.`);
+      return;
+    }
 
     const hasFilledData = formIsRegistered || Boolean(formDestination || formWave || formSize);
+    const trimmedAddress = formAddress.trim();
 
     const studentPayload: Student = {
       ...(editingStudent || { id: `std-${Date.now()}` }),
-      nis: formNis,
-      name: formName,
+      nis: trimmedNis,
+      name: trimmedName,
       className: formClass,
       gender: formGender,
       destination: formDestination ? (formDestination as DestinationType) : undefined,
       wave: formWave ? (formWave as WaveType) : undefined,
       tShirtSize: formSize ? (formSize as TShirtSize) : undefined,
-      parentName: formParent || undefined,
+      parentName: formParent.trim() || undefined,
+      address: trimmedAddress || undefined,
+      parentAddress: trimmedAddress || undefined,
       parentPhone: formPhone || undefined,
       studentPhone: formStudentPhone || undefined,
       medicalHistory: formMedicalHistory || undefined,
@@ -249,6 +320,28 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
     const updatedMap = new Map(updatedList.map((s) => [s.id, s]));
     const merged = students.map((st) => updatedMap.get(st.id) || st);
     onBulkImportStudents(merged);
+  };
+
+  const renderSortHeader = (label: string, field: string) => {
+    const isSorted = sort.field === field;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        className="inline-flex items-center gap-1 hover:text-slate-900 group cursor-pointer transition-colors font-extrabold"
+      >
+        <span>{label}</span>
+        {isSorted ? (
+          sort.direction === 'asc' ? (
+            <ArrowUp className="w-3.5 h-3.5 text-emerald-600 font-bold shrink-0" />
+          ) : (
+            <ArrowDown className="w-3.5 h-3.5 text-emerald-600 font-bold shrink-0" />
+          )
+        ) : (
+          <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 opacity-60 group-hover:opacity-100 shrink-0" />
+        )}
+      </button>
+    );
   };
 
   return (
@@ -516,13 +609,13 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                   />
                 </TableCell>
                 <TableCell isHeader className="w-12 text-center">No</TableCell>
-                {visibleColumns.nis && <TableCell isHeader>NIS</TableCell>}
-                <TableCell isHeader>Nama Siswa</TableCell>
-                <TableCell isHeader>Kelas</TableCell>
-                {visibleColumns.gender && <TableCell isHeader>L/P</TableCell>}
-                {visibleColumns.wave && <TableCell isHeader>Gelombang</TableCell>}
-                {visibleColumns.tshirt && <TableCell isHeader>Kaos</TableCell>}
-                {visibleColumns.busRoom && <TableCell isHeader>Bus / Kamar</TableCell>}
+                {visibleColumns.nis && <TableCell isHeader>{renderSortHeader('NIS', 'nis')}</TableCell>}
+                <TableCell isHeader>{renderSortHeader('Nama Siswa', 'name')}</TableCell>
+                <TableCell isHeader>{renderSortHeader('Kelas', 'className')}</TableCell>
+                {visibleColumns.gender && <TableCell isHeader>{renderSortHeader('L/P', 'gender')}</TableCell>}
+                {visibleColumns.wave && <TableCell isHeader>{renderSortHeader('Gelombang', 'wave')}</TableCell>}
+                {visibleColumns.tshirt && <TableCell isHeader>{renderSortHeader('Kaos', 'tShirtSize')}</TableCell>}
+                {visibleColumns.busRoom && <TableCell isHeader>{renderSortHeader('Bus / Kamar', 'busRoom')}</TableCell>}
                 {visibleColumns.contact && <TableCell isHeader>Kontak & Riwayat</TableCell>}
                 <TableCell isHeader className="text-center no-print">Aksi</TableCell>
               </TableRow>
@@ -793,6 +886,18 @@ export const StudentManager: React.FC<StudentManagerProps> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Alamat Lengkap */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">Alamat Lengkap Siswa / Orang Tua</label>
+            <textarea
+              rows={2}
+              value={formAddress}
+              onChange={(e) => setFormAddress(e.target.value)}
+              placeholder="Contoh: RT 02 RW 01, Desa Kertosari, Babadan, Ponorogo"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

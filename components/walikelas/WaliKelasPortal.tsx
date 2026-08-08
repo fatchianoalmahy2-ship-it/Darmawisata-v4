@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Student, SchoolClass, AuthUser, AppSettings } from '@/types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Student, SchoolClass, AuthUser, AppSettings, GenderType, DestinationType, TShirtSize, WaiverType } from '@/types';
+import { calculateWaliAllocation } from '@/lib/waliAllocation';
 import { WaveBadge, GenderBadge, WaiverBadge } from '@/components/ui/Badge';
 import { formatWhatsAppLink } from '@/lib/utils';
 import { RecapGeneratorService } from '@/services/recapGenerator';
@@ -18,11 +19,18 @@ import {
   Lock,
   Trash2,
   AlertTriangle,
+  UserPlus,
+  Edit,
+  Plus,
+  MapPin,
+  User,
+  Compass,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { WaliKelasManager } from '@/components/admin/WaliKelasManager';
 import { ClassManager } from '@/components/admin/ClassManager';
 import { StatusAngketA4Report } from '@/components/recap/StatusAngketA4Report';
+import { SuratIzinView } from '@/components/surat/SuratIzinView';
 
 interface WaliKelasPortalProps {
   classes: SchoolClass[];
@@ -30,6 +38,7 @@ interface WaliKelasPortalProps {
   thresholdPercentage: number;
   currentUser?: AuthUser;
   settings?: AppSettings;
+  onUpdateSettings?: (newSettings: AppSettings) => Promise<void>;
   onClearClassData?: (
     className: string,
     actionType: 'REGISTRATION_ONLY' | 'DELETE_STUDENTS'
@@ -37,6 +46,9 @@ interface WaliKelasPortalProps {
   onUpdateClass?: (updatedClass: SchoolClass) => void;
   onAddClass?: (newClass: SchoolClass) => void;
   onDeleteClass?: (classId: string) => void;
+  onAddStudent?: (newStudent: Student) => void;
+  onUpdateStudent?: (updatedStudent: Student) => void;
+  onDeleteStudent?: (studentId: string) => void;
 }
 
 export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
@@ -45,15 +57,19 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
   thresholdPercentage = 75,
   currentUser,
   settings,
+  onUpdateSettings,
   onClearClassData,
   onUpdateClass,
   onAddClass,
   onDeleteClass,
+  onAddStudent,
+  onUpdateStudent,
+  onDeleteStudent,
 }) => {
   const isWaliKelasRole = currentUser?.role === 'WALI_KELAS';
   const assignedClass = currentUser?.assignedClassName;
 
-  const [activeSubTab, setActiveSubTab] = useState<'MONITORING' | 'STATUS_REPORT' | 'WALI_KELAS' | 'CLASSES'>('STATUS_REPORT');
+  const [activeSubTab, setActiveSubTab] = useState<'MONITORING' | 'STATUS_REPORT' | 'WALI_KELAS' | 'CLASSES' | 'SURAT_IZIN'>('MONITORING');
 
   const isAngketClosed = (() => {
     if (settings?.isAngketClosed) return true;
@@ -79,6 +95,25 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
   const [confirmText, setConfirmText] = useState('');
   const [isClearing, setIsClearing] = useState(false);
 
+  // Student Add / Edit Modal States
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+
+  const [formNis, setFormNis] = useState('');
+  const [formName, setFormName] = useState('');
+  const [formClassName, setFormClassName] = useState('');
+  const [formGender, setFormGender] = useState<GenderType>('LAKI-LAKI');
+  const [formDestination, setFormDestination] = useState<DestinationType | ''>('');
+  const [formTShirtSize, setFormTShirtSize] = useState<TShirtSize | ''>('');
+  const [formTShirtDesign, setFormTShirtDesign] = useState<'A' | 'B' | ''>('');
+  const [formStudentPhone, setFormStudentPhone] = useState('');
+  const [formParentPhone, setFormParentPhone] = useState('');
+  const [formParentName, setFormParentName] = useState('');
+  const [formAddress, setFormAddress] = useState('');
+  const [formMedicalHistory, setFormMedicalHistory] = useState('');
+  const [formWaiverType, setFormWaiverType] = useState<WaiverType>('NONE');
+  const [formIsRegistered, setFormIsRegistered] = useState<boolean>(false);
+
   const handleExecuteClear = async () => {
     if (confirmText.trim().toUpperCase() !== 'KOSONGKAN') return;
     setIsClearing(true);
@@ -96,8 +131,128 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
     }
   };
 
+  const handleOpenAddStudentModal = () => {
+    setEditingStudent(null);
+    setFormNis('');
+    setFormName('');
+    setFormClassName(selectedClassName);
+    setFormGender('LAKI-LAKI');
+    setFormDestination('');
+    setFormTShirtSize('');
+    setFormTShirtDesign('');
+    setFormStudentPhone('');
+    setFormParentPhone('');
+    setFormParentName('');
+    setFormAddress('');
+    setFormMedicalHistory('');
+    setFormWaiverType('NONE');
+    setFormIsRegistered(false);
+    setIsStudentModalOpen(true);
+  };
+
+  const handleOpenEditStudentModal = (st: Student) => {
+    setEditingStudent(st);
+    setFormNis(st.nis || '');
+    setFormName(st.name || '');
+    setFormClassName(st.className || selectedClassName);
+    setFormGender(st.gender || 'LAKI-LAKI');
+    setFormDestination(st.destination || '');
+    setFormTShirtSize(st.tShirtSize || '');
+    setFormTShirtDesign(st.tShirtDesign || '');
+    setFormStudentPhone(st.studentPhone || '');
+    setFormParentPhone(st.parentPhone || '');
+    setFormParentName(st.parentName || '');
+    setFormAddress(st.address || st.parentAddress || '');
+    setFormMedicalHistory(st.medicalHistory || '');
+    setFormWaiverType(st.waiverType || 'NONE');
+    setFormIsRegistered(st.isRegistered ?? false);
+    setIsStudentModalOpen(true);
+  };
+
+  const handleSaveStudentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedNis = formNis.trim();
+    const trimmedName = formName.trim();
+    const targetClass = formClassName || selectedClassName;
+
+    if (!trimmedName) {
+      alert('Nama siswa wajib diisi.');
+      return;
+    }
+
+    // Duplicate Check logic: Prevent existing NIS or existing Name+Class
+    const duplicate = students.find(
+      (s) => s.id !== editingStudent?.id && (
+        (trimmedNis && s.nis.trim().toLowerCase() === trimmedNis.toLowerCase()) ||
+        (s.name.trim().toLowerCase() === trimmedName.toLowerCase() && s.className.trim().toLowerCase() === targetClass.toLowerCase())
+      )
+    );
+
+    if (duplicate) {
+      alert(`⚠️ PERINGATAN DATA DUPLIKAT!\n\nSiswa dengan NIS "${trimmedNis}" atau Nama "${trimmedName}" sudah terdaftar di kelas ${duplicate.className}.\n\nSilakan periksa kembali data siswa untuk menghindari duplikasi.`);
+      return;
+    }
+
+    const trimmedAddress = formAddress.trim();
+    const trimmedParentName = formParentName.trim();
+
+    if (editingStudent) {
+      const updated: Student = {
+        ...editingStudent,
+        nis: trimmedNis || editingStudent.nis,
+        name: trimmedName,
+        className: targetClass,
+        gender: formGender,
+        destination: formDestination || undefined,
+        tShirtSize: formTShirtSize || undefined,
+        tShirtDesign: formTShirtDesign || undefined,
+        studentPhone: formStudentPhone.trim(),
+        parentPhone: formParentPhone.trim(),
+        parentName: trimmedParentName || editingStudent.parentName,
+        address: trimmedAddress || editingStudent.address,
+        parentAddress: trimmedAddress || editingStudent.parentAddress,
+        medicalHistory: formMedicalHistory.trim(),
+        waiverType: formWaiverType,
+        isRegistered: formIsRegistered,
+        updatedAt: new Date().toISOString(),
+      };
+      onUpdateStudent?.(updated);
+    } else {
+      const newStudent: Student = {
+        id: `st_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        nis: trimmedNis || `NIS${Math.floor(1000 + Math.random() * 9000)}`,
+        name: trimmedName,
+        className: targetClass,
+        gender: formGender,
+        destination: formDestination || undefined,
+        tShirtSize: formTShirtSize || undefined,
+        tShirtDesign: formTShirtDesign || undefined,
+        studentPhone: formStudentPhone.trim(),
+        parentPhone: formParentPhone.trim(),
+        parentName: trimmedParentName || undefined,
+        address: trimmedAddress || undefined,
+        parentAddress: trimmedAddress || undefined,
+        medicalHistory: formMedicalHistory.trim(),
+        waiverType: formWaiverType,
+        isRegistered: formIsRegistered,
+        updatedAt: new Date().toISOString(),
+      };
+      onAddStudent?.(newStudent);
+    }
+
+    setIsStudentModalOpen(false);
+  };
+
+  const handleDeleteStudentClick = (st: Student) => {
+    if (confirm(`Apakah Anda yakin ingin menghapus data siswa ${st.name} (${st.nis})?`)) {
+      onDeleteStudent?.(st.id);
+    }
+  };
+
   const activeClass = classes.find((c) => c.name === selectedClassName) || classes[0];
-  const classStudents = students.filter((s) => s.className === selectedClassName);
+  const classStudents = students
+    .filter((s) => s.className === selectedClassName)
+    .sort((a, b) => a.nis.localeCompare(b.nis, undefined, { numeric: true, sensitivity: 'base' }));
 
   const registeredStudents = classStudents.filter((s) => s.isRegistered);
   const totalInClass = activeClass ? activeClass.totalStudents : classStudents.length;
@@ -108,6 +263,23 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
     : 0;
 
   const isTeacherEligible = participationPct >= thresholdPercentage;
+
+  // Wali Kelas Allocation (Bali / Jogja & Ranking) Calculation
+  const waliAllocation = useMemo(() => {
+    return calculateWaliAllocation(classes, students, settings);
+  }, [classes, students, settings]);
+
+  const currentWaliItem = activeClass ? waliAllocation.itemsByClassName[activeClass.name] : null;
+  const isStatusVisibleToWali = Boolean(settings?.showWaliParticipationStatusInPortal);
+  const canShowWaliStatusCard = currentUser?.role === 'ADMIN' || isStatusVisibleToWali;
+
+  const handleToggleWaliStatusVisibility = async () => {
+    if (!settings || !onUpdateSettings) return;
+    await onUpdateSettings({
+      ...settings,
+      showWaliParticipationStatusInPortal: !isStatusVisibleToWali,
+    });
+  };
 
   // Wave stats
   const bali1 = registeredStudents.filter((s) => s.wave === 'BALI_GEL_1').length;
@@ -134,12 +306,12 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Sub Navigation Tabs (Standardized 4-Column Grid) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 p-3 bg-white rounded-2xl border border-slate-200 shadow-xs no-print">
+      {/* Sub Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2.5 p-3 bg-white rounded-2xl border border-slate-200 shadow-xs no-print">
         <button
           type="button"
           onClick={() => setActiveSubTab('MONITORING')}
-          className={`h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`flex-1 h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             activeSubTab === 'MONITORING'
               ? 'bg-[#0284c7] text-white shadow-xs font-black'
               : 'bg-sky-50 text-sky-900 hover:bg-sky-100 border border-sky-200'
@@ -150,54 +322,48 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
         <button
           type="button"
           onClick={() => setActiveSubTab('STATUS_REPORT')}
-          className={`h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`flex-1 h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
             activeSubTab === 'STATUS_REPORT'
               ? 'bg-[#00875a] text-white shadow-xs font-black'
               : 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200'
           }`}
         >
-          📋 Laporan Status Angket (PDF)
+          📋 Laporan Status (PDF)
         </button>
-        {currentUser?.role === 'ADMIN' ? (
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('SURAT_IZIN')}
+          className={`flex-1 h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === 'SURAT_IZIN'
+              ? 'bg-[#9333ea] text-white shadow-xs font-black'
+              : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200'
+          }`}
+        >
+          ✉️ Surat Izin / Pernyataan
+        </button>
+        {currentUser?.role === 'ADMIN' && (
           <>
             <button
               type="button"
               onClick={() => setActiveSubTab('WALI_KELAS')}
-              className={`h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`flex-1 h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeSubTab === 'WALI_KELAS'
                   ? 'bg-slate-900 text-white shadow-xs font-black'
                   : 'bg-slate-200 text-slate-800 hover:bg-slate-300 border border-slate-300'
               }`}
             >
-              👥 Kelola Kredensial Wali Kelas
+              👥 Kelola Wali
             </button>
             <button
               type="button"
               onClick={() => setActiveSubTab('CLASSES')}
-              className={`h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`flex-1 h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeSubTab === 'CLASSES'
                   ? 'bg-amber-600 text-white shadow-xs font-black'
                   : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200'
               }`}
             >
-              🏫 Kelola Kelas & Rombel
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={handleCopyWA}
-              className="h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer bg-teal-50 text-teal-900 hover:bg-teal-100 border border-teal-200 active:scale-95"
-            >
-              {copiedWA ? '✅ Rekap WA Tersalin!' : '💬 Copy Rekap WA Kelas'}
-            </button>
-            <button
-              type="button"
-              onClick={handlePrintClass}
-              className="h-11 sm:h-12 py-2.5 px-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200 active:scale-95"
-            >
-              🖨️ Cetak / Unduh Laporan
+              🏫 Kelola Kelas
             </button>
           </>
         )}
@@ -260,6 +426,13 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
           students={students}
           settings={settings}
         />
+      ) : activeSubTab === 'SURAT_IZIN' ? (
+        <SuratIzinView
+          students={students}
+          classes={classes}
+          currentUser={currentUser}
+          settings={settings}
+        />
       ) : activeSubTab === 'MONITORING' ? (
         <>
           {/* Class Overview Cards & Eligibility Banner (Standardized 2-Column Grid) */}
@@ -297,46 +470,103 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
               </div>
             </div>
 
-            {/* Card 2: Wali Kelas Qualification Status */}
+            {/* Card 2: Status Keikutsertaan Wali Kelas (Dinamis & Configurable) */}
             <div className={`rounded-2xl border p-6 space-y-4 shadow-xs flex flex-col justify-between ${
-              isTeacherEligible
-                ? 'bg-gradient-to-br from-emerald-50 to-teal-50/40 border-emerald-200'
-                : 'bg-amber-50/70 border-amber-200'
+              !canShowWaliStatusCard
+                ? 'bg-slate-50 border-slate-200'
+                : currentWaliItem?.finalStatus === 'BALI_GEL_1'
+                ? 'bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white border-emerald-300'
+                : currentWaliItem?.finalStatus === 'BALI_GEL_2'
+                ? 'bg-gradient-to-br from-teal-50 via-cyan-50/40 to-white border-teal-300'
+                : 'bg-gradient-to-br from-amber-50 via-orange-50/30 to-white border-amber-300'
             }`}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   Status Keikutsertaan Wali Kelas
                 </span>
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-              </div>
-
-              <div>
-                {isTeacherEligible ? (
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-black shadow-xs">
-                      <CheckCircle2 className="w-4 h-4" /> MELEBIHI SYARAT MINIMAL ({thresholdPercentage}%)
-                    </div>
-                    <h4 className="text-lg font-bold text-slate-900 mt-2">
-                      Wali Kelas Berhak Berangkat!
-                    </h4>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Selamat! Karena kuota partisipasi siswa kelas Anda telah mencapai <strong>{participationPct}%</strong> (di atas target {thresholdPercentage}%), Wali Kelas berhak mendapat fasilitas penuh sebagai Guru Pendamping Darmawisata.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-black shadow-xs">
-                      <XCircle className="w-4 h-4" /> BELUM MEMENUHI TARGET ({thresholdPercentage}%)
-                    </div>
-                    <h4 className="text-lg font-bold text-slate-900 mt-2">
-                      Membutuhkan {Math.ceil((thresholdPercentage / 100) * totalInClass) - registeredCount} Siswa Lagi
-                    </h4>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Siswa yang terdaftar saat ini baru <strong>{participationPct}%</strong>. Himbau siswa yang belum mengisi angket agar kuota minimal {thresholdPercentage}% terpenuhi.
-                    </p>
-                  </div>
+                
+                {/* Admin Quick Show/Hide Toggle */}
+                {currentUser?.role === 'ADMIN' && (
+                  <button
+                    type="button"
+                    onClick={handleToggleWaliStatusVisibility}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all cursor-pointer flex items-center gap-1 ${
+                      isStatusVisibleToWali
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                    }`}
+                    title="Klik untuk mengubah visibilitas status keikutsertaan di portal Wali Kelas"
+                  >
+                    {isStatusVisibleToWali ? '👁️ Tampil di Wali (Default: Sembunyi)' : '🔒 Sembunyi dari Wali (Klik Tampilkan)'}
+                  </button>
                 )}
               </div>
+
+              {!canShowWaliStatusCard ? (
+                <div className="space-y-2 py-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-extrabold">
+                    🔒 DALAM PROSES PENETAPAN PANITIA
+                  </div>
+                  <h4 className="text-base font-bold text-slate-800">
+                    Penetapan Kuota Armada Bus Wali Kelas
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Status resmi keikutsertaan dan penetapan gelombang Wali Kelas sedang dikalkulasi oleh Panitia Darmawisata berdasarkan rekapitulasi data pendaftaran siswa. Hasil resmi akan dibuka secara serentak.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    {currentWaliItem?.finalStatus === 'BALI_GEL_1' && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-black shadow-xs">
+                        <CheckCircle2 className="w-4 h-4" /> LOLOS KE BALI (GELOMBANG 1) • RANK #{currentWaliItem.rank}
+                      </div>
+                    )}
+                    {currentWaliItem?.finalStatus === 'BALI_GEL_2' && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-black shadow-xs">
+                        <CheckCircle2 className="w-4 h-4" /> LOLOS KE BALI (GELOMBANG 2) • RANK #{currentWaliItem.rank}
+                      </div>
+                    )}
+                    {currentWaliItem?.finalStatus === 'YOGYAKARTA' && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-black shadow-xs">
+                        <Compass className="w-4 h-4" /> KE JOGJA / STANDBY • RANK #{currentWaliItem?.rank || '-'}
+                      </div>
+                    )}
+                    {currentWaliItem?.finalStatus === 'NOT_PARTICIPATING' && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-black shadow-xs">
+                        <XCircle className="w-4 h-4" /> TIDAK IKUT BERANGKAT
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-3 bg-white/80 rounded-xl border border-slate-200/80 text-xs space-y-1 font-medium text-slate-700">
+                    <div className="flex justify-between">
+                      <span>Siswa Ikut Ke Bali:</span>
+                      <strong className="text-emerald-700">{currentWaliItem?.baliCount || 0} Siswa ({currentWaliItem?.baliPercentage || 0}%)</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Batas Kuota Wali Bali:</span>
+                      <strong>Top {waliAllocation.totalQuotaWaliBali} Kelas ({waliAllocation.totalBusesNeeded} Bus)</strong>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                    {currentWaliItem?.finalStatus === 'NOT_PARTICIPATING' ? (
+                      <>
+                        Status Keikutsertaan Anda ditetapkan sebagai <strong>Tidak Ikut Berangkat</strong> oleh Panitia berdasarkan penyesuaian/alasan khusus pendampingan.
+                      </>
+                    ) : currentWaliItem?.finalStatus.startsWith('BALI') ? (
+                      <>
+                        Selamat! Berdasarkan hasil perhitungan otomatis pembagian bus, kelas Anda berada di <strong>Ranking #{currentWaliItem.rank}</strong> (masuk kuota {waliAllocation.totalQuotaWaliBali} Bus Bali) sehingga Wali Kelas berhak berangkat pendampingan ke Bali.
+                      </>
+                    ) : (
+                      <>
+                        Kelas Anda berada di <strong>Ranking #{currentWaliItem?.rank || '-'}</strong> ({currentWaliItem?.baliCount || 0} siswa ke Bali). Saat ini berada di luar batas {waliAllocation.totalQuotaWaliBali} kuota armada bus Bali, sehingga dialokasikan mendampingi siswa ke Yogyakarta.
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Card 3: Destination & Shirt Quick Summary (Spans 2 cols for perfect balance) */}
@@ -423,15 +653,26 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                <Shirt className="w-4 h-4 text-slate-400" />
-                <span>Ukuran Kaos Terdata: </span>
-                <div className="flex gap-1.5">
-                  {Object.entries(sizeCounts).map(([sz, count]) => (
-                    <span key={sz} className="bg-slate-200 px-2 py-0.5 rounded font-bold text-slate-800">
-                      {sz}: {count}
-                    </span>
-                  ))}
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleOpenAddStudentModal}
+                  className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Siswa</span>
+                </button>
+
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                  <Shirt className="w-4 h-4 text-slate-400" />
+                  <span>Ukuran Kaos Terdata: </span>
+                  <div className="flex gap-1.5">
+                    {Object.entries(sizeCounts).map(([sz, count]) => (
+                      <span key={sz} className="bg-slate-200 px-2 py-0.5 rounded font-bold text-slate-800">
+                        {sz}: {count}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -449,12 +690,13 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
                     <th className="py-3.5 px-4">Bus / Kamar</th>
                     <th className="py-3.5 px-4">Kontak & Riwayat</th>
                     <th className="py-3.5 px-4">Jalur Tidak Mampu</th>
+                    <th className="py-3.5 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {classStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={10} className="py-8 text-center text-slate-400 font-medium">
                         Belum ada data siswa untuk kelas ini.
                       </td>
                     </tr>
@@ -463,7 +705,15 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
                       <tr key={st.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-4 font-bold text-slate-400 text-center">{idx + 1}</td>
                         <td className="py-3 px-4 font-extrabold text-slate-900">{st.nis}</td>
-                        <td className="py-3 px-4 font-bold text-slate-800">{st.name}</td>
+                        <td className="py-3 px-4 font-bold text-slate-800">
+                          <div>{st.name}</div>
+                          {st.address && (
+                            <div className="text-[10px] text-slate-500 font-normal flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[200px]" title={st.address}>{st.address}</span>
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3 px-4">
                           <GenderBadge gender={st.gender} />
                         </td>
@@ -538,6 +788,26 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
                         </td>
                         <td className="py-3 px-4">
                           <WaiverBadge waiver={st.waiverType} />
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditStudentModal(st)}
+                              className="p-1.5 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Siswa"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStudentClick(st)}
+                              className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Siswa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -653,6 +923,171 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal Tambah / Edit Siswa */}
+      <Modal
+        isOpen={isStudentModalOpen}
+        onClose={() => setIsStudentModalOpen(false)}
+        title={editingStudent ? `Edit Data Siswa - ${editingStudent.name}` : 'Tambah Siswa Baru'}
+        subtitle={`Kelas ${selectedClassName}`}
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveStudentSubmit} className="space-y-4 text-xs font-serif">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                NIS (Nomor Induk Siswa) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formNis}
+                onChange={(e) => setFormNis(e.target.value)}
+                placeholder="Contoh: 12345"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nama Lengkap Siswa <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Nama Lengkap Siswa"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Kelas</label>
+              <select
+                value={formClassName}
+                onChange={(e) => setFormClassName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              >
+                {classes.map((c) => (
+                  <option key={c.id || c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Jenis Kelamin</label>
+              <select
+                value={formGender}
+                onChange={(e) => setFormGender(e.target.value as GenderType)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="LAKI-LAKI">LAKI-LAKI</option>
+                <option value="PEREMPUAN">PEREMPUAN</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Alamat Lengkap & Nama Orang Tua */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Alamat Lengkap Siswa / Orang Tua</span>
+            </label>
+            <textarea
+              rows={2}
+              value={formAddress}
+              onChange={(e) => setFormAddress(e.target.value)}
+              placeholder="Contoh: RT 02 RW 01, Desa/Kel. Kertosari, Kec. Babadan, Kab. Ponorogo"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Alamat ini akan dicetak otomatis pada dokumen Surat Izin Orang Tua dan Surat Pernyataan JTM.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Nama Orang Tua / Wali</label>
+              <input
+                type="text"
+                value={formParentName}
+                onChange={(e) => setFormParentName(e.target.value)}
+                placeholder="Nama Orang Tua"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Jalur / Beasiswa</label>
+              <select
+                value={formWaiverType}
+                onChange={(e) => setFormWaiverType(e.target.value as WaiverType)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="NONE">Reguler (Normal)</option>
+                <option value="25%">Diskon 25% (Jalur Tidak Mampu)</option>
+                <option value="50%">Diskon 50% (Jalur Tidak Mampu)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">No. WA Siswa</label>
+              <input
+                type="text"
+                value={formStudentPhone}
+                onChange={(e) => setFormStudentPhone(e.target.value)}
+                placeholder="Contoh: 081234567890"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">No. WA Orang Tua</label>
+              <input
+                type="text"
+                value={formParentPhone}
+                onChange={(e) => setFormParentPhone(e.target.value)}
+                placeholder="Contoh: 081987654321"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Riwayat Kesehatan / Penyakit</label>
+            <input
+              type="text"
+              value={formMedicalHistory}
+              onChange={(e) => setFormMedicalHistory(e.target.value)}
+              placeholder="Contoh: Asma, Alergi Udara Dingin (atau 'TIDAK ADA')"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsStudentModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+            >
+              {editingStudent ? 'Simpan Perubahan' : 'Tambah Siswa'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
