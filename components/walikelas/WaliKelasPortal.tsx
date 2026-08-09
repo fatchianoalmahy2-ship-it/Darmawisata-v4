@@ -654,14 +654,16 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleOpenAddStudentModal}
-                  className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Tambah Siswa</span>
-                </button>
+                {currentUser?.role === 'ADMIN' && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddStudentModal}
+                    className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Siswa</span>
+                  </button>
+                )}
 
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                   <Shirt className="w-4 h-4 text-slate-400" />
@@ -799,14 +801,16 @@ export const WaliKelasPortal: React.FC<WaliKelasPortalProps> = ({
                             >
                               <Edit className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStudentClick(st)}
-                              className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus Siswa"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {currentUser?.role === 'ADMIN' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStudentClick(st)}
+                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Hapus Siswa"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
